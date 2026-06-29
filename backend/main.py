@@ -1,3 +1,5 @@
+print("Starting main.py imports...", flush=True)
+
 """
 main.py - FastAPI backend for Audio Image Sync Studio
 Handles file uploads, triggers video generation, and serves outputs.
