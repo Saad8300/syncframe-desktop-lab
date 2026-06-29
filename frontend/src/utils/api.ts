@@ -10,8 +10,26 @@ import type {
   BatchJob 
 } from '../types'
 
-const BASE_URL = '' // Vite dev proxy handles /api → http://127.0.0.1:8000
+export let BASE_URL = '' // Vite dev proxy handles /api → http://127.0.0.1:8000
 
+// Safely resolve API base URL for packaged app scenarios
+if (typeof window !== 'undefined') {
+  if (window.location.protocol === 'file:') {
+    // Packaged Electron app loads index.html via file://
+    BASE_URL = 'http://127.0.0.1:8000'
+    if ((import.meta as any).env?.DEV) {
+      console.log('[API] Running in file:// mode. Resolved BASE_URL:', BASE_URL)
+    }
+  } else if ((window as any).electron) {
+    // Preload script flag, if used
+    BASE_URL = 'http://127.0.0.1:8000'
+    if ((import.meta as any).env?.DEV) {
+      console.log('[API] Running in Electron mode. Resolved BASE_URL:', BASE_URL)
+    }
+  } else if ((import.meta as any).env?.DEV) {
+    console.log('[API] Running in Web Dev mode. Resolved BASE_URL:', BASE_URL || 'relative proxy')
+  }
+}
 
 function parseErrorResponse(status: number, text: string): string {
   try {
@@ -42,10 +60,17 @@ function parseErrorResponse(status: number, text: string): string {
 
 
 export async function checkHealth(): Promise<boolean> {
+  const url = `${BASE_URL}/api/health`
   try {
-    const res = await fetch(`${BASE_URL}/api/health`, { signal: AbortSignal.timeout(5000) })
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
+    if ((import.meta as any).env?.DEV) {
+      console.log(`[API] Health check to ${url}: ${res.ok ? 'OK' : 'FAILED'}`)
+    }
     return res.ok
-  } catch {
+  } catch (err) {
+    if ((import.meta as any).env?.DEV) {
+      console.log(`[API] Health check to ${url} ERROR:`, err)
+    }
     return false
   }
 }
