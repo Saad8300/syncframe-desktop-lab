@@ -1,0 +1,6 @@
+start,end,asset,text
+0,5,1.png,"Opening image"
+5,10,1.mp4,"First video clip"
+10,15,2.jpg,"Second image"
+15,20,2.mp4,"Second video clip"
+20,25,,"Text-only screen"

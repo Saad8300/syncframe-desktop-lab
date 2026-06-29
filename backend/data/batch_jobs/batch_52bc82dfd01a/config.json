@@ -1,0 +1,19 @@
+{
+  "audio_input_mode": "single",
+  "aspect_ratio": "9:16",
+  "export_resolution": "1080p",
+  "fit_mode": "cover",
+  "transition": "none",
+  "transition_duration": 0.5,
+  "zoom_effect": "none",
+  "render_profile": "balanced",
+  "output_name": "my_video",
+  "motion_effect": "none",
+  "motion_intensity": "medium",
+  "visual_effect": "none",
+  "effect_strength": "medium",
+  "style_preset": "clean_default",
+  "enable_bg_music": false,
+  "music_volume": 0.12,
+  "music_fade": true
+}
