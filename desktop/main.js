@@ -65,7 +65,7 @@ function createWindow() {
     <html>
       <body style="background:#111;color:#eee;font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;">
         <h1>Starting SyncFrame Studio...</h1>
-        <p id="status">Preparing local video engine...</p>
+        <p id="status" style="color:#aaa;font-size:1.1em;margin-top:1rem;">Preparing local video engine...</p>
       </body>
     </html>
   `;
@@ -290,7 +290,7 @@ async function startBackend() {
   // ── 6. Timeout ──────────────────────────────────────────────────────────────
   const lastOutput = lastStderrLine || lastStdoutLine || 'No output captured';
   showError(
-    'Backend failed to start within 120 seconds.',
+    'The local video engine could not start. Restart the app or check the desktop backend log.',
     `Last output: ${lastOutput}<br/>Log: ${getLogFilePath()}`
   );
   return false;
@@ -328,6 +328,15 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   if (isBackendStartedByUs && backendProcess) {
     log('Stopping backend process on quit...');
-    backendProcess.kill();
+    try {
+      backendProcess.kill();
+      // Add a fallback kill to avoid zombie processes (only killing on port 8000 since we own it)
+      setTimeout(() => {
+        const { exec } = require('child_process');
+        exec(`lsof -tiTCP:8000 -sTCP:LISTEN | xargs kill -9 2>/dev/null`, () => {});
+      }, 500);
+    } catch (e) {
+      log('Error stopping backend: ' + e.message);
+    }
   }
 });

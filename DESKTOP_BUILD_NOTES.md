@@ -24,3 +24,15 @@ This will build the frontend, package the Mac app (including the backend runtime
 - **Windows Build on Windows**: The `.exe` configuration is prepared but must be built on a Windows machine.
 - **Auto Updater**: Not configured.
 - **Login / Licensing**: Not implemented.
+
+## Desktop Logs
+- Developer logs: `logs/desktop_frontend.log`
+- Packaged app logs: `~/Library/Application Support/SyncFrame Studio/desktop-backend.log`
+
+## Next Batches
+- Batch 21E: Google Login
+- Batch 21F: Free/Pro Membership
+- Batch 21G: Tool Lock System
+- Batch 21H: Admin Users & Access Panel
+- Batch 21I: Windows Build Support
+- Batch 21J: Code Signing & Auto Updates

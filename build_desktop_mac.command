@@ -25,6 +25,14 @@ if [[ "$(basename "$PROJECT_ROOT")" != "syncframe-desktop-lab" ]]; then
     exit 1
 fi
 
+# Node Version Check
+if command -v node &>/dev/null; then
+    NODE_VERSION=$(node -v | cut -d 'v' -f 2 | cut -d '.' -f 1)
+    if [ "$NODE_VERSION" -ge 26 ]; then
+        echo -e "\033[1;33m  ⚠️  Warning: You are using Node $NODE_VERSION. Desktop dev/build prefers Node 22 LTS. If you experience Electron issues, please downgrade to Node 22.\033[0m"
+    fi
+fi
+
 # 2. Check Node
 if ! command -v npm &>/dev/null; then error "npm not found."; exit 1; fi
 

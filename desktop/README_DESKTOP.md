@@ -1,4 +1,4 @@
-# SyncFrame Studio - Desktop Packaging (Batch 21C)
+# SyncFrame Studio - Desktop Packaging (Batch 21D)
 
 This folder contains the Electron desktop wrapper and `electron-builder` configuration for the SyncFrame Studio application. 
 It supports both a seamless Dev Mode and a fully Packaged Build Mode.
@@ -41,10 +41,12 @@ desktop/dist/
 - **Windows Build on Windows**: The `.exe` configuration is prepared but must be built natively on Windows.
 
 ## 7. Future Batches (Do Not Implement Yet)
-- **Batch 21D**: Windows native build support.
-- **Batch 21E**: Google login + license check.
-- **Batch 21F**: Tool permission lock.
-- **Batch 21G**: Auto update and installer publishing.
+- **Batch 21E**: Google Login Foundation
+- **Batch 21F**: Free/Pro Membership Check
+- **Batch 21G**: Tool Lock System
+- **Batch 21H**: Admin Users & Access Panel
+- **Batch 21I**: Windows Build Support
+- **Batch 21J**: Code Signing / Notarization / Auto Update
 
 ## How to replace app icon later
 Placeholders exist in `desktop/assets/`. To customize the app branding:

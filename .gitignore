@@ -70,6 +70,16 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 *TEMP_MPY*
+*.blockmap
+backend_run*.log
+backend_test*.log
+app_backend_test.log
+abrt*.log
+backend_hang.log
+backend_output.log
+backend_fixed.log
+backend_long_wait.log
+pyinstaller_import.log
 
 # ---- User secrets / local integration configs ----
 backend/data/notification_integrations.json
