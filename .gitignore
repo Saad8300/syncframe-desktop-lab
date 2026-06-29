@@ -92,3 +92,6 @@ desktop/*.log
 backend/build/
 backend/dist/
 backend/*.spec
+desktop/resources/backend/build/
+desktop/resources/backend/temp/
+desktop/resources/backend/syncframe-backend

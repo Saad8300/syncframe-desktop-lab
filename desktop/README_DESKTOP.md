@@ -1,7 +1,7 @@
-# SyncFrame Studio - Desktop Packaging (Batch 21B)
+# SyncFrame Studio - Desktop Packaging (Batch 21C)
 
 This folder contains the Electron desktop wrapper and `electron-builder` configuration for the SyncFrame Studio application. 
-It supports both a seamless Dev Mode and a Packaged Build Mode.
+It supports both a seamless Dev Mode and a fully Packaged Build Mode.
 
 ## 1. Desktop Dev Mode
 In Dev Mode, the Electron shell loads the frontend directly from the Vite dev server (`http://localhost:5173`) and spawns the local Python backend from source. 
@@ -11,11 +11,15 @@ To run Dev Mode:
 \`\`\`
 
 ## 2. Packaged Build Mode
-In Packaged Mode, the Electron shell bundles the production-built React frontend (`dist/`) and loads it from the local file system. 
-The backend runtime is expected to be pre-compiled and bundled inside the app resources.
+In Packaged Mode, the Electron shell bundles the production-built React frontend (`dist/`) and the compiled Python backend executable (`resources/backend/syncframe-backend`). 
+The Electron app starts the backend executable automatically on launch and tears it down on exit.
 
 ## 3. Build Mac App
-To build the Mac `.app` and `.dmg` package:
+First, build the Python backend:
+\`\`\`bash
+./backend/build_backend_mac.command
+\`\`\`
+Then, build the Mac `.app` and `.dmg` package:
 \`\`\`bash
 ./build_desktop_mac.command
 \`\`\`
@@ -30,18 +34,13 @@ desktop/dist/
 ## 5. FFmpeg Requirement
 **SyncFrame Studio requires FFmpeg to render videos.**
 - **Mac Developers**: Run `brew install ffmpeg` before running the app.
-- **Packaged App**: Future batches will bundle a static FFmpeg binary. If FFmpeg is missing, the app will show an actionable error on launch rather than failing silently.
+- **Packaged App**: Future batches will bundle a static FFmpeg binary. If FFmpeg is missing, the app will show an actionable error on launch rather than failing silently. The backend uses a safe AAC fallback (avoiding `libfdk_aac`).
 
-## 6. Backend Runtime Status
-Currently, the backend is not fully bundled into the Mac app automatically. The `build_desktop_mac.command` prepares the frontend, but the Python backend requires a manual PyInstaller build (`backend/build_backend_mac.command`) and must be moved to `desktop/resources/backend` for a fully self-contained app. If the backend runtime is missing in the packaged app, an error screen will guide the user.
-
-## 7. Current Limitations
-- **Fully Bundled Python Backend**: Experimental.
+## 6. Current Limitations
 - **Code Signing/Notarization**: The Mac `.app` and `.dmg` are unsigned.
 - **Windows Build on Windows**: The `.exe` configuration is prepared but must be built natively on Windows.
 
-## 8. Future Batches (Do Not Implement Yet)
-- **Batch 21C**: Finalize fully bundled backend integration.
+## 7. Future Batches (Do Not Implement Yet)
 - **Batch 21D**: Windows native build support.
 - **Batch 21E**: Google login + license check.
 - **Batch 21F**: Tool permission lock.

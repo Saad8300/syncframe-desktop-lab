@@ -26,6 +26,10 @@
       {
         "from": "../frontend/dist",
         "to": "frontend"
+      },
+      {
+        "from": "resources/backend",
+        "to": "backend"
       }
     ],
     "mac": {

@@ -97,7 +97,7 @@ async function startBackend() {
   updateLoadingStatus('Starting backend engine...');
 
   if (app.isPackaged) {
-    const bundledBackendExe = path.join(process.resourcesPath, 'backend', 'desktop_backend_launcher');
+    const bundledBackendExe = path.join(process.resourcesPath, 'backend', 'syncframe-backend');
     if (!fs.existsSync(bundledBackendExe)) {
         showError('Backend runtime not bundled yet. Run developer setup or use Desktop Dev Mode.');
         return false;
