@@ -10,25 +10,28 @@ import type {
   BatchJob 
 } from '../types'
 
-export let BASE_URL = '' // Vite dev proxy handles /api → http://127.0.0.1:8000
-
-// Safely resolve API base URL for packaged app scenarios
-if (typeof window !== 'undefined') {
-  if (window.location.protocol === 'file:') {
-    // Packaged Electron app loads index.html via file://
-    BASE_URL = 'http://127.0.0.1:8000'
-    if ((import.meta as any).env?.DEV) {
-      console.log('[API] Running in file:// mode. Resolved BASE_URL:', BASE_URL)
+export function resolveApiBaseUrl(): string {
+  if (typeof window !== 'undefined') {
+    if (window.location.protocol === 'file:') {
+      return 'http://127.0.0.1:8000';
+    } else if ((window as any).electron) {
+      return 'http://127.0.0.1:8000';
     }
-  } else if ((window as any).electron) {
-    // Preload script flag, if used
-    BASE_URL = 'http://127.0.0.1:8000'
-    if ((import.meta as any).env?.DEV) {
-      console.log('[API] Running in Electron mode. Resolved BASE_URL:', BASE_URL)
-    }
-  } else if ((import.meta as any).env?.DEV) {
-    console.log('[API] Running in Web Dev mode. Resolved BASE_URL:', BASE_URL || 'relative proxy')
   }
+  return '';
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
+
+if ((import.meta as any).env?.DEV) {
+  console.log('[API] Resolved API_BASE_URL:', API_BASE_URL || 'relative proxy', '| protocol:', typeof window !== 'undefined' ? window.location.protocol : 'none');
+}
+
+export function apiUrl(path: string): string {
+  if (path.startsWith('/')) {
+    return `${API_BASE_URL}${path}`;
+  }
+  return `${API_BASE_URL}/${path}`;
 }
 
 function parseErrorResponse(status: number, text: string): string {
@@ -60,7 +63,7 @@ function parseErrorResponse(status: number, text: string): string {
 
 
 export async function checkHealth(): Promise<boolean> {
-  const url = `${BASE_URL}/api/health`
+  const url = apiUrl('/api/health')
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
     if ((import.meta as any).env?.DEV) {
@@ -160,7 +163,7 @@ export async function startJob(
   if (outroFile)   form.append('outro_file',    outroFile)
   if (bgMusicFile) form.append('bg_music_file', bgMusicFile)
 
-  const res = await fetch(`${BASE_URL}/api/jobs/start`, {
+  const res = await fetch(apiUrl('/api/jobs/start'), {
     method: 'POST',
     body: form,
   })
@@ -230,7 +233,7 @@ export async function createImageTimelineBatchJob(
 
   appendTextOverlaySettings(form, settings)
 
-  const res = await fetch(`${BASE_URL}/api/batch/jobs/image-timeline`, {
+  const res = await fetch(apiUrl('/api/batch/jobs/image-timeline'), {
     method: 'POST',
     body: form,
   })
@@ -301,7 +304,7 @@ export async function createVideoTimelineBatchJob(
 
   appendTextOverlaySettings(form, settings)
 
-  const res = await fetch(`${BASE_URL}/api/batch/jobs/video-timeline`, {
+  const res = await fetch(apiUrl('/api/batch/jobs/video-timeline'), {
     method: 'POST',
     body: form,
   })
@@ -398,7 +401,7 @@ export async function createMediaTimelineBatchJob(
 
   appendTextOverlaySettings(form, settings)
 
-  const res = await fetch(`${BASE_URL}/api/batch/jobs/media-timeline`, {
+  const res = await fetch(apiUrl('/api/batch/jobs/media-timeline'), {
     method: 'POST',
     body: form,
   })
@@ -413,7 +416,7 @@ export async function createMediaTimelineBatchJob(
 
 /** Poll a job's current status. */
 export async function getJobStatus(jobId: string): Promise<JobStatus> {
-  const res = await fetch(`${BASE_URL}/api/jobs/${jobId}/status`, {
+  const res = await fetch(apiUrl('/api/jobs/${jobId}/status'), {
     signal: AbortSignal.timeout(8000),
   })
   if (!res.ok) {
@@ -425,7 +428,7 @@ export async function getJobStatus(jobId: string): Promise<JobStatus> {
 
 /** Request cancellation of a running job. */
 export async function cancelJob(jobId: string): Promise<void> {
-  const res = await fetch(`${BASE_URL}/api/jobs/${jobId}/cancel`, {
+  const res = await fetch(apiUrl('/api/jobs/${jobId}/cancel'), {
     method: 'POST',
     signal: AbortSignal.timeout(8000),
   })
@@ -498,7 +501,7 @@ export async function startVideoTimelineJob(
 
   appendTextOverlaySettings(form, settings)
 
-  const res = await fetch(`${BASE_URL}/api/jobs/start-video-timeline`, {
+  const res = await fetch(apiUrl('/api/jobs/start-video-timeline'), {
     method: 'POST',
     body: form,
   })
@@ -532,7 +535,7 @@ export async function generateVideo(
   form.append('zoom_effect',   settings.zoomEffect)
   form.append('output_name',   settings.outputName || 'video')
 
-  const res = await fetch(`${BASE_URL}/api/generate`, {
+  const res = await fetch(apiUrl('/api/generate'), {
     method: 'POST',
     body: form,
   })
@@ -637,7 +640,7 @@ export async function startMediaTimelineJob(
 
   appendTextOverlaySettings(form, settings)
 
-  const res = await fetch(`${BASE_URL}/api/jobs/start-media-timeline`, {
+  const res = await fetch(apiUrl('/api/jobs/start-media-timeline'), {
     method: 'POST',
     body: form,
   })
@@ -655,25 +658,25 @@ export async function startMediaTimelineJob(
 // ---------------------------------------------------------------------------
 
 export async function getHistory(): Promise<any[]> {
-  const res = await fetch(`${BASE_URL}/api/history`)
+  const res = await fetch(apiUrl('/api/history'))
   if (!res.ok) throw new Error("Failed to load history")
   const data = await res.json()
   return data.records || []
 }
 
 export async function getHistoryStats(): Promise<any> {
-  const res = await fetch(`${BASE_URL}/api/history/stats`)
+  const res = await fetch(apiUrl('/api/history/stats'))
   if (!res.ok) throw new Error("Failed to load history stats")
   return res.json()
 }
 
 export async function deleteHistoryItem(id: string): Promise<void> {
-  const res = await fetch(`${BASE_URL}/api/history/${id}`, { method: 'DELETE' })
+  const res = await fetch(apiUrl('/api/history/${id}'), { method: 'DELETE' })
   if (!res.ok) throw new Error("Failed to delete history item")
 }
 
 export async function clearHistory(): Promise<void> {
-  const res = await fetch(`${BASE_URL}/api/history`, { method: 'DELETE' })
+  const res = await fetch(apiUrl('/api/history'), { method: 'DELETE' })
   if (!res.ok) throw new Error("Failed to clear history")
 }
 
@@ -682,21 +685,21 @@ export async function clearHistory(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function getBatchJobs(): Promise<any[]> {
-  const res = await fetch(`${BASE_URL}/api/batch/jobs`)
+  const res = await fetch(apiUrl('/api/batch/jobs'))
   if (!res.ok) throw new Error("Failed to load batch jobs")
   const data = await res.json()
   return data.jobs || []
 }
 
 export async function getBatchStats(): Promise<any> {
-  const res = await fetch(`${BASE_URL}/api/batch/stats`)
+  const res = await fetch(apiUrl('/api/batch/stats'))
   if (!res.ok) throw new Error("Failed to load batch stats")
   const data = await res.json()
   return data.stats || {}
 }
 
 export async function createBatchJob(payload: any): Promise<any> {
-  const res = await fetch(`${BASE_URL}/api/batch/jobs`, {
+  const res = await fetch(apiUrl('/api/batch/jobs'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -706,13 +709,13 @@ export async function createBatchJob(payload: any): Promise<any> {
 }
 
 export async function getBatchJob(id: string): Promise<any> {
-  const res = await fetch(`${BASE_URL}/api/batch/jobs/${id}`)
+  const res = await fetch(apiUrl('/api/batch/jobs/${id}'))
   if (!res.ok) throw new Error("Failed to get batch job")
   return res.json()
 }
 
 export async function updateBatchJob(id: string, payload: any): Promise<any> {
-  const res = await fetch(`${BASE_URL}/api/batch/jobs/${id}`, {
+  const res = await fetch(apiUrl('/api/batch/jobs/${id}'), {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -722,42 +725,42 @@ export async function updateBatchJob(id: string, payload: any): Promise<any> {
 }
 
 export async function deleteBatchJob(id: string): Promise<void> {
-  const res = await fetch(`${BASE_URL}/api/batch/jobs/${id}`, { method: 'DELETE' })
+  const res = await fetch(apiUrl('/api/batch/jobs/${id}'), { method: 'DELETE' })
   if (!res.ok) throw new Error("Failed to delete batch job")
 }
 
 export async function clearCompletedBatchJobs(): Promise<void> {
-  const res = await fetch(`${BASE_URL}/api/batch/jobs/completed`, { method: 'DELETE' })
+  const res = await fetch(apiUrl('/api/batch/jobs/completed'), { method: 'DELETE' })
   if (!res.ok) throw new Error("Failed to clear completed jobs")
 }
 
 export async function clearFailedBatchJobs(): Promise<void> {
-  const res = await fetch(`${BASE_URL}/api/batch/jobs/failed`, { method: 'DELETE' })
+  const res = await fetch(apiUrl('/api/batch/jobs/failed'), { method: 'DELETE' })
   if (!res.ok) throw new Error("Failed to clear failed jobs")
 }
 
 export async function clearCancelledBatchJobs(): Promise<void> {
-  const res = await fetch(`${BASE_URL}/api/batch/jobs/cancelled`, { method: 'DELETE' })
+  const res = await fetch(apiUrl('/api/batch/jobs/cancelled'), { method: 'DELETE' })
   if (!res.ok) throw new Error("Failed to clear cancelled jobs")
 }
 
 export async function clearAllBatchJobs(): Promise<void> {
-  const res = await fetch(`${BASE_URL}/api/batch/jobs`, { method: 'DELETE' })
+  const res = await fetch(apiUrl('/api/batch/jobs'), { method: 'DELETE' })
   if (!res.ok) throw new Error("Failed to clear all jobs")
 }
 
 export async function moveBatchJobUp(id: string): Promise<void> {
-  const res = await fetch(`${BASE_URL}/api/batch/jobs/${id}/move-up`, { method: 'POST' })
+  const res = await fetch(apiUrl('/api/batch/jobs/${id}/move-up'), { method: 'POST' })
   if (!res.ok) throw new Error("Failed to move job up")
 }
 
 export async function moveBatchJobDown(id: string): Promise<void> {
-  const res = await fetch(`${BASE_URL}/api/batch/jobs/${id}/move-down`, { method: 'POST' })
+  const res = await fetch(apiUrl('/api/batch/jobs/${id}/move-down'), { method: 'POST' })
   if (!res.ok) throw new Error("Failed to move job down")
 }
 
 export async function duplicateBatchJob(id: string): Promise<any> {
-  const res = await fetch(`${BASE_URL}/api/batch/jobs/${id}/duplicate`, { method: 'POST' })
+  const res = await fetch(apiUrl('/api/batch/jobs/${id}/duplicate'), { method: 'POST' })
   if (!res.ok) throw new Error("Failed to duplicate job")
   return res.json()
 }
@@ -775,37 +778,37 @@ export interface BatchState {
 }
 
 export async function getBatchState(): Promise<BatchState> {
-  const res = await fetch(`${BASE_URL}/api/batch/state`)
+  const res = await fetch(apiUrl('/api/batch/state'))
   if (!res.ok) throw new Error("Failed to get batch state")
   return res.json()
 }
 
 export async function startBatchQueue(): Promise<any> {
-  const res = await fetch(`${BASE_URL}/api/batch/start`, { method: 'POST' })
+  const res = await fetch(apiUrl('/api/batch/start'), { method: 'POST' })
   if (!res.ok) throw new Error("Failed to start batch queue")
   return res.json()
 }
 
 export async function pauseBatchAfterCurrent(): Promise<any> {
-  const res = await fetch(`${BASE_URL}/api/batch/pause-after-current`, { method: 'POST' })
+  const res = await fetch(apiUrl('/api/batch/pause-after-current'), { method: 'POST' })
   if (!res.ok) throw new Error("Failed to pause batch queue")
   return res.json()
 }
 
 export async function stopBatchQueue(): Promise<any> {
-  const res = await fetch(`${BASE_URL}/api/batch/stop`, { method: 'POST' })
+  const res = await fetch(apiUrl('/api/batch/stop'), { method: 'POST' })
   if (!res.ok) throw new Error("Failed to stop batch queue")
   return res.json()
 }
 
 export async function retryFailedBatchJobs(): Promise<any> {
-  const res = await fetch(`${BASE_URL}/api/batch/retry-failed`, { method: 'POST' })
+  const res = await fetch(apiUrl('/api/batch/retry-failed'), { method: 'POST' })
   if (!res.ok) throw new Error("Failed to retry failed jobs")
   return res.json()
 }
 
 export async function retryBatchJob(jobId: string): Promise<any> {
-  const res = await fetch(`${BASE_URL}/api/batch/jobs/${jobId}/retry`, { method: 'POST' })
+  const res = await fetch(apiUrl('/api/batch/jobs/${jobId}/retry'), { method: 'POST' })
   if (!res.ok) throw new Error("Failed to retry job")
   return res.json()
 }
@@ -839,13 +842,13 @@ export interface N8nIntegrationSettings {
 }
 
 export async function getN8nIntegrationSettings(): Promise<N8nIntegrationSettings> {
-  const res = await fetch(`${BASE_URL}/api/notification-integrations`)
+  const res = await fetch(apiUrl('/api/notification-integrations'))
   if (!res.ok) throw new Error('Failed to load n8n integration settings')
   return res.json()
 }
 
 export async function saveN8nIntegrationSettings(settings: Partial<N8nIntegrationSettings>): Promise<{ success: boolean; settings: N8nIntegrationSettings }> {
-  const res = await fetch(`${BASE_URL}/api/notification-integrations`, {
+  const res = await fetch(apiUrl('/api/notification-integrations'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(settings),
@@ -855,7 +858,7 @@ export async function saveN8nIntegrationSettings(settings: Partial<N8nIntegratio
 }
 
 export async function testN8nWebhook(): Promise<{ success: boolean; message?: string; error?: string; status_code?: number; last_delivery_status?: string; last_delivery_at?: string }> {
-  const res = await fetch(`${BASE_URL}/api/notification-integrations/test`, { method: 'POST' })
+  const res = await fetch(apiUrl('/api/notification-integrations/test'), { method: 'POST' })
   if (!res.ok) {
     const txt = await res.text()
     throw new Error(`Test webhook failed: ${txt}`)

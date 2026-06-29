@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react'
 import StudioPageHeader from './StudioPageHeader'
-import { BASE_URL } from '../utils/api'
+import { API_BASE_URL, apiUrl } from '../utils/api'
 import {
   IconMusic,
   IconUpload,
@@ -127,7 +127,7 @@ export default function AudioMergerPage() {
     formData.append('output_filename', outputName.trim() || 'merged_audio')
 
     try {
-      const res = await fetch(`${BASE_URL}/api/tools/audio-merge`, {
+      const res = await fetch(`${API_BASE_URL}/api/tools/audio-merge`, {
         method: 'POST',
         body: formData
       })
@@ -143,7 +143,7 @@ export default function AudioMergerPage() {
 
       const data = await res.json()
       setResult({
-        url: `${BASE_URL}${data.url}`,
+        url: `${API_BASE_URL}${data.url}`,
         filename: data.filename,
         duration: data.duration,
         parts_merged: data.parts_merged,

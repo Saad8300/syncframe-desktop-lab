@@ -11,7 +11,7 @@ import {
   IconChevronRight
 } from './icons'
 import StudioPageHeader from './StudioPageHeader'
-import { BASE_URL } from '../utils/api'
+import { API_BASE_URL, apiUrl } from '../utils/api'
 import { loadSettings } from '../utils/appSettings'
 import { consumePendingTemplate, saveTemplate } from '../utils/templateStore'
 
@@ -219,7 +219,7 @@ export default function ScriptTimestampPage() {
     }
 
     try {
-      const res = await fetch(`${BASE_URL}/api/jobs/start-script-timestamp`, {
+      const res = await fetch(`${API_BASE_URL}/api/jobs/start-script-timestamp`, {
         method: 'POST',
         body: formData,
       })
@@ -243,7 +243,7 @@ export default function ScriptTimestampPage() {
     if (status === 'transcribing' && jobId) {
       interval = setInterval(async () => {
         try {
-          const res = await fetch(`${BASE_URL}/api/jobs/${jobId}/status`)
+          const res = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/status`)
           if (!res.ok) throw new Error('Failed to fetch status')
           const data = await res.json()
           

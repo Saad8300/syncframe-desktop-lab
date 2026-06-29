@@ -6,7 +6,7 @@ import {
   IconCheck, IconX, IconRefreshCw
 } from './icons'
 import {
-  BASE_URL,
+  API_BASE_URL, apiUrl,
   getBatchJobs, getBatchStats, deleteBatchJob,
   clearCompletedBatchJobs, clearFailedBatchJobs, clearCancelledBatchJobs, clearAllBatchJobs,
   moveBatchJobUp, moveBatchJobDown, duplicateBatchJob,
@@ -591,10 +591,10 @@ function JobRow({ job, isSelected, onSelect, onMoveUp, onMoveDown, onDuplicate, 
 
         {isCompleted && job.output_url ? (
           <div className="flex items-center gap-2 mr-2">
-            <a href={`${BASE_URL}${job.output_url}`} target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded-lg text-xs font-bold transition-colors bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10" style={{ color: 'var(--text-primary)' }}>
+            <a href={`${API_BASE_URL}${job.output_url}`} target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded-lg text-xs font-bold transition-colors bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10" style={{ color: 'var(--text-primary)' }}>
               Open
             </a>
-            <a href={`${BASE_URL}${job.output_url}`} download className="px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-opacity hover:opacity-90 shadow-sm" style={{ background: 'var(--color-accent)' }}>
+            <a href={`${API_BASE_URL}${job.output_url}`} download className="px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-opacity hover:opacity-90 shadow-sm" style={{ background: 'var(--color-accent)' }}>
               Download
             </a>
           </div>
