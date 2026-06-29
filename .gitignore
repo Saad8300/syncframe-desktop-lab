@@ -73,3 +73,9 @@ yarn-error.log*
 
 # ---- User secrets / local integration configs ----
 backend/data/notification_integrations.json
+
+# ---- Desktop App ----
+desktop/node_modules/
+desktop/dist/
+desktop/out/
+desktop/release/
