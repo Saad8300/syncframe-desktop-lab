@@ -79,3 +79,16 @@ desktop/node_modules/
 desktop/dist/
 desktop/out/
 desktop/release/
+desktop/.vite/
+desktop/*.log
+
+# ---- Desktop Packaging ----
+*.dmg
+*.zip
+*.exe
+*.pkg
+
+# ---- Backend Packaging ----
+backend/build/
+backend/dist/
+backend/*.spec
