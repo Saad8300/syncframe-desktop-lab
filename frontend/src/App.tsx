@@ -1,6 +1,9 @@
 // App.tsx – SyncFrame Studio — Professional creator dashboard
 
 import React, { useState, useEffect, useCallback } from 'react'
+import { useAuth } from './auth/AuthProvider'
+import LoginPage from './components/auth/LoginPage'
+import AuthCallback from './auth/AuthCallback'
 import FileDropZone from './components/FileDropZone'
 import CsvGuide from './components/CsvGuide'
 import StudioPageHeader from './components/StudioPageHeader'
@@ -215,6 +218,49 @@ function SummaryChip({ label, value, active }: { label: string; value: string; a
 export type ViewMode = 'landing' | 'tools' | 'dashboard' | 'history' | 'templates' | 'settings' | 'tool:image' | 'tool:video' | 'tool:media' | 'tool:audio_merger' | 'tool:script_timestamp' | 'tool:batch_video' | 'batch_video'
 
 export default function App() {
+  const { isAuthenticated, loading: authLoading } = useAuth()
+
+  // ── Auth: callback route handler ────────────────────────────────────────────
+  // In browser dev mode, Supabase redirects to /auth/callback — handle it here.
+  const isAuthCallback =
+    typeof window !== 'undefined' &&
+    (window.location.pathname === '/auth/callback' ||
+      window.location.hash.includes('access_token') ||
+      window.location.search.includes('code='))
+
+  if (isAuthCallback) {
+    return <AuthCallback />
+  }
+
+  // ── Auth: loading state ──────────────────────────────────────────────────────
+  if (authLoading) {
+    return (
+      <div style={{
+        minHeight: '100vh', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        background: '#080c14', color: '#f1f5f9',
+        fontFamily: "'Inter', system-ui, sans-serif", gap: '1.5rem',
+      }}>
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none">
+          <polygon points="13,2 4.5,13.5 11,13.5 11,22 19.5,10.5 13,10.5" fill="url(#loadGrad)" />
+          <defs>
+            <linearGradient id="loadGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#06b6d4" />
+              <stop offset="100%" stopColor="#6366f1" />
+            </linearGradient>
+          </defs>
+        </svg>
+        <div style={{ width: 36, height: 36, border: '3px solid rgba(99,102,241,0.25)', borderTop: '3px solid #6366f1', borderRadius: '50%', animation: 'appSpin 0.7s linear infinite' }} />
+        <style>{`@keyframes appSpin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    )
+  }
+
+  // ── Auth: login gate ─────────────────────────────────────────────────────────
+  if (!isAuthenticated) {
+    return <LoginPage />
+  }
+
   const [appSettingsState, setAppSettingsState] = useState<AppSettings>(() => loadSettings())
   
   // Apply theme and accent on load and change

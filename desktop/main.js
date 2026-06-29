@@ -1,12 +1,30 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const http = require('http');
 const fs = require('fs');
 
+// ── Custom protocol for auth deep-link ────────────────────────────────────────
+// Must be called before app is ready.
+if (process.defaultApp) {
+  // Electron dev: register with the Electron binary
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('syncframe', process.execPath, [path.resolve(process.argv[1])]);
+  }
+} else {
+  app.setAsDefaultProtocolClient('syncframe');
+}
+
+// ── Single-instance lock (required for second-instance deep-link on Windows) ──
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+}
+
 let mainWindow;
 let backendProcess = null;
 let isBackendStartedByUs = false;
+
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Logging
@@ -299,6 +317,38 @@ async function startBackend() {
 // ──────────────────────────────────────────────────────────────────────────────
 // App lifecycle
 // ──────────────────────────────────────────────────────────────────────────────
+
+// ── ipcMain handlers ──────────────────────────────────────────────────────────
+ipcMain.on('is-packaged', (event) => {
+  event.returnValue = app.isPackaged;
+});
+
+// ── Auth deep-link handler ────────────────────────────────────────────────────
+function handleAuthDeepLink(url) {
+  if (!url || !url.startsWith('syncframe://')) return;
+  log('Auth deep-link received: ' + url);
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+    mainWindow.webContents.send('auth-callback', url);
+  }
+}
+
+// macOS: open-url fires when the OS routes a syncframe:// URL to the app
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  handleAuthDeepLink(url);
+});
+
+// Windows / Linux: the deep-link URL is passed as a command-line arg on second-instance
+app.on('second-instance', (_event, commandLine) => {
+  const url = commandLine.find(arg => arg.startsWith('syncframe://'));
+  if (url) handleAuthDeepLink(url);
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
 
 app.whenReady().then(async () => {
   createWindow();

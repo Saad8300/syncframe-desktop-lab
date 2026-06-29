@@ -37,7 +37,13 @@
         "dmg",
         "zip"
       ],
-      "icon": "assets/icon.png"
+      "icon": "assets/icon.png",
+      "protocols": [
+        {
+          "name": "SyncFrame Studio Auth",
+          "schemes": ["syncframe"]
+        }
+      ]
     },
     "artifactName": "SyncFrame-Studio-${version}-${os}-${arch}.${ext}",
     "dmg": {

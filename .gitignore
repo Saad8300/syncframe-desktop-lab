@@ -34,6 +34,10 @@ env/
 .env.*
 *.env
 
+# ---- Frontend environment / secrets (Supabase keys etc.) ----
+frontend/.env.local
+frontend/.env.*.local
+
 # ---- Backend uploads / outputs / temp (user-generated content) ----
 backend/uploads/*
 backend/outputs/*

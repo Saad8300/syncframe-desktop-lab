@@ -1,10 +1,14 @@
+// frontend/src/components/StudioLayout.tsx
+// SyncFrame Studio — Sidebar layout shell with auth-aware user profile widget
+
 import React, { ReactNode, useState, useEffect } from 'react'
 import {
   IconZap, IconSun, IconMoon, IconSettings, IconHistory,
   IconDashboard, IconMenu, IconX, IconLayers, IconChevronRight,
   IconFilm, IconGrid, IconMusic, IconFileText,
 } from './icons'
-import { loadSidebarItems, saveSidebarItems, ALL_SIDEBAR_ITEMS, SidebarItemId } from '../utils/appSettings'
+import { loadSidebarItems, ALL_SIDEBAR_ITEMS, SidebarItemId } from '../utils/appSettings'
+import { useAuth } from '../auth/AuthProvider'
 
 export type StudioTab = 'tools' | 'batch_video' | 'dashboard' | 'history' | 'templates' | 'settings' | 'help' | string
 
@@ -47,6 +51,7 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
     try { return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true' } catch { return false }
   })
   const [sidebarItems, setSidebarItems] = useState<SidebarItemId[]>(() => loadSidebarItems())
+  const { user, isAuthenticated, signOut } = useAuth()
 
   useEffect(() => {
     try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed)) } catch { /* noop */ }
@@ -56,7 +61,6 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
   useEffect(() => {
     const handleStorage = () => setSidebarItems(loadSidebarItems())
     window.addEventListener('storage', handleStorage)
-    // Also listen for a custom event triggered when settings are saved within the same tab
     window.addEventListener('syncframe-sidebar-changed', handleStorage)
     return () => {
       window.removeEventListener('storage', handleStorage)
@@ -70,6 +74,10 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
   }
 
   const sidebarW = collapsed ? 'md:w-[60px]' : 'md:w-56'
+
+  // ── User avatar helpers ────────────────────────────────────────────────────
+  const userInitial = user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || '?'
+  const userLabel = user?.name || user?.email || ''
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row" style={{ background: 'var(--bg-app)', color: 'var(--text-primary)' }}>
@@ -134,13 +142,9 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
         {/* Navigation */}
         <nav className={`flex-1 py-3 space-y-0.5 overflow-y-auto ${collapsed ? 'px-2' : 'px-2'}`}>
           {sidebarItems.map(itemId => {
-            // Determine the "active" state
-            // For tool:* items, check if activeTab matches tool:xxx or if it's a tool sub-view
             const isActive = (() => {
               if (activeTab === itemId) return true
-              // If item is 'tools', also highlight when any tool: is active
               if (itemId === 'tools' && typeof activeTab === 'string' && activeTab.startsWith('tool:') && !sidebarItems.some(si => si === activeTab)) return true
-              // batch_video sidebar item maps to 'batch_video' activeTab
               if (itemId === 'batch_video' && activeTab === 'batch_video') return true
               return false
             })()
@@ -170,6 +174,77 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
         <div className="md:hidden px-3 pb-2">
           {backendStatus}
         </div>
+
+        {/* ── User Profile Widget ── */}
+        {isAuthenticated && user && (
+          <div
+            className={`border-t px-2 py-2 ${collapsed ? 'flex justify-center' : ''}`}
+            style={{ borderColor: 'var(--border-subtle)' }}
+          >
+            {collapsed ? (
+              // Collapsed: just avatar bubble
+              <div
+                title={userLabel}
+                style={{
+                  width: 36, height: 36, borderRadius: '50%',
+                  background: 'linear-gradient(135deg,#06b6d4,#6366f1)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 13, fontWeight: 700, color: '#fff', flexShrink: 0,
+                  overflow: 'hidden', cursor: 'default',
+                }}
+              >
+                {user.avatarUrl
+                  ? <img src={user.avatarUrl} alt={userInitial} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : userInitial
+                }
+              </div>
+            ) : (
+              // Expanded: avatar + name/email + logout button
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.375rem 0.5rem', borderRadius: 12 }}>
+                {/* Avatar */}
+                <div style={{
+                  width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                  background: 'linear-gradient(135deg,#06b6d4,#6366f1)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 12, fontWeight: 700, color: '#fff',
+                  overflow: 'hidden',
+                }}>
+                  {user.avatarUrl
+                    ? <img src={user.avatarUrl} alt={userInitial} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : userInitial
+                  }
+                </div>
+                {/* Name / Email */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {user.name && (
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {user.name}
+                    </div>
+                  )}
+                  {user.email && (
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {user.email}
+                    </div>
+                  )}
+                </div>
+                {/* Logout button */}
+                <button
+                  id="sidebar-logout-btn"
+                  onClick={signOut}
+                  title="Sign out"
+                  className="flex items-center justify-center rounded-lg transition-colors hover:bg-black/10 dark:hover:bg-white/10"
+                  style={{ width: 28, height: 28, color: 'var(--text-muted)', flexShrink: 0, border: '1px solid var(--border-subtle)' }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                    <polyline points="16 17 21 12 16 7"/>
+                    <line x1="21" y1="12" x2="9" y2="12"/>
+                  </svg>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Footer: compact theme toggle */}
         <div className={`border-t p-3 ${collapsed ? 'flex justify-center' : 'flex items-center gap-2'}`} style={{ borderColor: 'var(--border-subtle)' }}>
