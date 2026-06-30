@@ -43,5 +43,21 @@ info "Removed desktop/release"
 rm -rf desktop/.vite
 info "Removed desktop/.vite"
 
+# 2. Backend
+rm -rf backend/build
+info "Removed backend/build"
+
+rm -rf backend/dist
+info "Removed backend/dist"
+
+rm -rf backend/__pycache__
+info "Removed backend/__pycache__"
+
+rm -f backend/desktop_backend_launcher.spec
+info "Removed backend/desktop_backend_launcher.spec"
+
+rm -f backend/syncframe-backend.spec
+info "Removed backend/syncframe-backend.spec"
+
 success "Clean complete! (Source files untouched)"
 echo ""

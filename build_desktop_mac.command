@@ -36,7 +36,20 @@ fi
 # 2. Check Node
 if ! command -v npm &>/dev/null; then error "npm not found."; exit 1; fi
 
-# 3. Frontend Build
+# 3. Backend Build
+header "Building Backend"
+if [ ! -f "backend/build_backend_mac.command" ]; then
+    error "backend/build_backend_mac.command not found."
+    exit 1
+fi
+bash backend/build_backend_mac.command
+if [ $? -ne 0 ]; then
+    error "Backend build failed."
+    exit 1
+fi
+success "Backend built successfully."
+
+# 4. Frontend Build
 header "Building Frontend"
 cd frontend
 info "Installing frontend dependencies if missing..."
@@ -50,7 +63,7 @@ fi
 success "Frontend built to frontend/dist"
 cd ..
 
-# 4. Desktop Build
+# 5. Desktop Build
 header "Building Mac Desktop App"
 cd desktop
 info "Installing desktop dependencies if missing..."
