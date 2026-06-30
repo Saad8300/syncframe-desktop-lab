@@ -1,6 +1,7 @@
 // components/VideoTimelinePage.tsx — Video Timeline workflow (Batch 10B + 10C)
 
 import React, { useState, useCallback, useEffect, useRef } from 'react'
+import { useAuth } from '../auth/AuthProvider'
 import StudioPageHeader from './StudioPageHeader'
 import {
   IconMusic,
@@ -346,6 +347,7 @@ function VideoTimelineResult({
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function VideoTimelinePage() {
+  const { requireAuth } = useAuth()
   // Files
   const [audioInputMode, setAudioInputMode] = useState<'single' | 'zip'>('single')
   const [audioFile, setAudioFile] = useState<File | null>(null)
@@ -386,8 +388,6 @@ export default function VideoTimelinePage() {
   const handleOutroChange = (f: File | null) => {
     setOutroFile(f)
     set('enableOutro', !!f)
-  }
-  const handleWmTextChange = (text: string) => {
   }
 
   // Duration warnings
@@ -502,6 +502,7 @@ export default function VideoTimelinePage() {
   };
 
   const handleGenerate = async () => {
+    if (!requireAuth()) return
     if ((audioInputMode === 'single' ? !audioFile : !audioZip) || !videosZip || !csvFile) return
     setResult(null); setCancelledMsg(null); setStatus('uploading')
     try {
@@ -518,6 +519,7 @@ export default function VideoTimelinePage() {
   }
 
   const handleAddJob = async () => {
+    if (!requireAuth()) return
     if ((audioInputMode === 'single' ? !audioFile : !audioZip) || !videosZip || !csvFile) return
 
     setIsAddingToQueue(true)
@@ -691,6 +693,7 @@ export default function VideoTimelinePage() {
                 </div>
                 <button 
                   onClick={() => {
+                    if (!requireAuth()) return
                     const name = window.prompt('Enter template name:', 'My Video Template')
                     if (name) {
                       saveTemplate({ name, tool: 'video', description: 'Saved from Video Timeline', settings })

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import {
   IconMusic,
   IconUpload,
@@ -10,6 +10,7 @@ import {
   IconChevronDown,
   IconChevronRight
 } from './icons'
+import { useAuth } from '../auth/AuthProvider'
 import StudioPageHeader from './StudioPageHeader'
 import { API_BASE_URL, apiUrl } from '../utils/api'
 import { loadSettings } from '../utils/appSettings'
@@ -130,6 +131,7 @@ function buildImageTimelineCsv(segments: { start: number; end: number; text: str
 }
 
 export default function ScriptTimestampPage() {
+  const { requireAuth } = useAuth()
   const [audioFile, setAudioFile]   = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
@@ -188,6 +190,7 @@ export default function ScriptTimestampPage() {
   }
 
   const handleGenerate = async () => {
+    if (!requireAuth()) return
     if (!audioFile) {
       setErrorMsg('Please upload an audio file.')
       return
@@ -409,6 +412,7 @@ export default function ScriptTimestampPage() {
               <h2 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Settings</h2>
               <button 
                 onClick={() => {
+                  if (!requireAuth()) return
                   const name = window.prompt('Enter template name:', 'My Script Template')
                   if (name) {
                     saveTemplate({ 

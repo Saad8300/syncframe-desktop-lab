@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
+import { useAuth } from '../auth/AuthProvider'
 import StudioPageHeader from './StudioPageHeader'
 import {
   IconVideo,
@@ -75,6 +76,7 @@ interface StudioTemplatesPageProps {
 }
 
 export default function StudioTemplatesPage({ onUseTemplate }: StudioTemplatesPageProps) {
+  const { requireAuth } = useAuth()
   const [savedTemplates, setSavedTemplates] = useState<StudioTemplate[]>([])
   
   // Editor Modal State
@@ -160,6 +162,7 @@ export default function StudioTemplatesPage({ onUseTemplate }: StudioTemplatesPa
   }
 
   const handleDeleteTemplate = (id: string) => {
+    if (!requireAuth()) return
     if (confirm("Are you sure you want to delete this template?")) {
       deleteTemplate(id)
       refreshTemplates()
@@ -167,6 +170,7 @@ export default function StudioTemplatesPage({ onUseTemplate }: StudioTemplatesPa
   }
 
   const handleDuplicateTemplate = (id: string) => {
+    if (!requireAuth()) return
     duplicateTemplate(id)
     refreshTemplates()
   }
@@ -177,6 +181,7 @@ export default function StudioTemplatesPage({ onUseTemplate }: StudioTemplatesPa
   }
 
   const handleSaveModal = (data: Partial<StudioTemplate>) => {
+    if (!requireAuth()) return
     if (isCreating) {
       saveTemplate(data as Omit<StudioTemplate, 'id' | 'createdAt' | 'isBuiltIn' | 'type' | 'updatedAt'>)
     } else if (editingTemplate) {
@@ -356,15 +361,18 @@ export default function StudioTemplatesPage({ onUseTemplate }: StudioTemplatesPa
             <option value="category">Category</option>
           </select>
 
-          <div className="w-px h-6 bg-[var(--border-subtle)] hidden lg:block mx-1" />
-
-          <button 
-            onClick={() => setIsCreating(true)}
-            className="btn-primary text-xs py-1.5 px-4 whitespace-nowrap ml-auto md:ml-0 flex items-center gap-2"
+          <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              if (!requireAuth()) return
+              setIsCreating(true)
+            }}
+            className="flex items-center gap-2 bg-cyan-500 hover:bg-cyan-400 text-black px-4 py-2 rounded-lg font-bold text-sm transition-colors"
           >
             <IconPlus size={14} />
             Create
           </button>
+        </div>
         </div>
       </div>
 

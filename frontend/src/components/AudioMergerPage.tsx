@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react'
+import { useAuth } from '../auth/AuthProvider'
 import StudioPageHeader from './StudioPageHeader'
 import { API_BASE_URL, apiUrl } from '../utils/api'
 import {
@@ -28,6 +29,7 @@ interface MergeResponse {
 }
 
 export default function AudioMergerPage() {
+  const { requireAuth } = useAuth()
   const [parts, setParts] = useState<AudioPart[]>([])
   const [outputFormat, setOutputFormat] = useState<'wav' | 'mp3'>('wav')
   const [outputName, setOutputName] = useState<string>(() => loadSettings().defaultAudioFilename)
@@ -110,6 +112,7 @@ export default function AudioMergerPage() {
   }
 
   const handleMerge = async () => {
+    if (!requireAuth()) return
     if (parts.length < 2) {
       setErrorMsg('Add at least 2 audio parts to merge.')
       return
@@ -294,16 +297,14 @@ export default function AudioMergerPage() {
               <h2 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Output Settings</h2>
               <button 
                 onClick={() => {
-                  const name = window.prompt('Enter template name:', 'My Audio Template')
-                  if (name) {
-                    saveTemplate({ 
-                      name, 
-                      tool: 'audio_merger', 
-                      description: 'Saved from Audio Merger', 
-                      settings: { outputFormat, outputName } 
-                    })
-                    alert('Template saved to your templates library!')
-                  }
+                  if (!requireAuth()) return
+                  saveTemplate({ 
+                    name: outputName.trim() || 'Saved Audio Merger Template', 
+                    tool: 'audio_merger', 
+                    description: 'Saved from Audio Merger', 
+                    settings: { outputFormat, outputName } 
+                  })
+                  alert('Template saved to your templates library!')
                 }} 
                 className="text-[10px] font-bold px-2 py-1 bg-[var(--bg-input)] hover:bg-[var(--accent-primary)] hover:text-white rounded border border-[var(--border-subtle)] transition-colors"
               >

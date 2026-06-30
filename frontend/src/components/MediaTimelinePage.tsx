@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react'
+import { useAuth } from '../auth/AuthProvider'
 import StudioPageHeader from './StudioPageHeader'
 import {
   IconGrid,
@@ -302,6 +303,7 @@ function MediaTimelineResult({
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
 export default function MediaTimelinePage() {
+  const { requireAuth } = useAuth()
   const [audioInputMode, setAudioInputMode] = useState<'single' | 'zip'>('single')
   const [audioFile, setAudioFile] = useState<File | null>(null)
   const [audioZip,  setAudioZip]  = useState<File | null>(null)
@@ -397,6 +399,7 @@ export default function MediaTimelinePage() {
   };
 
   const handleGenerate = async () => {
+    if (!requireAuth()) return
     if (!isReady) return
     setStatus('uploading')
     setErrorMsg(null)
@@ -597,6 +600,7 @@ export default function MediaTimelinePage() {
               </div>
               <button 
                 onClick={() => {
+                  if (!requireAuth()) return
                   const name = window.prompt('Enter template name:', 'My Media Template')
                   if (name) {
                     saveTemplate({ name, tool: 'media', description: 'Saved from Media Timeline', settings })
