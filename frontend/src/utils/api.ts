@@ -27,6 +27,12 @@ if ((import.meta as any).env?.DEV) {
   console.log('[API] Resolved API_BASE_URL:', API_BASE_URL || 'relative proxy', '| protocol:', typeof window !== 'undefined' ? window.location.protocol : 'none');
 }
 
+export function resolveBackendUrl(pathOrUrl: string): string {
+  if (!pathOrUrl) return '';
+  if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://') || pathOrUrl.startsWith('blob:')) return pathOrUrl;
+  return apiUrl(pathOrUrl);
+}
+
 export function apiUrl(path: string): string {
   if (path.startsWith('/')) {
     return `${API_BASE_URL}${path}`;

@@ -1,3 +1,4 @@
+import { deductCredits } from '../lib/credits';
 import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useAuth } from '../auth/AuthProvider'
 import StudioPageHeader from './StudioPageHeader'
@@ -23,7 +24,7 @@ import type {
   JobStatus,
   GenerateResponse,
 } from '../types'
-import { startMediaTimelineJob, createMediaTimelineBatchJob } from '../utils/api'
+import { startMediaTimelineJob, createMediaTimelineBatchJob , resolveBackendUrl} from '../utils/api'
 import { loadSettings } from '../utils/appSettings'
 import { consumePendingTemplate, saveTemplate } from '../utils/templateStore'
 
@@ -200,7 +201,7 @@ function MediaDropZone({
 function MediaTimelineResult({
   result, rowCount, settings,
 }: { result: GenerateResponse; rowCount: number; settings: MediaTimelineSettings }) {
-  const videoUrl = result.output_video_url
+  const videoUrl = resolveBackendUrl(result.output_video_url || "")
   const hasVideo = result.success && videoUrl
   const filename = result.output_filename ?? 'media_timeline.mp4'
 

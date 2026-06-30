@@ -46,13 +46,23 @@ export async function reserveCredits(userId: string, amount: number): Promise<bo
   return true
 }
 
-export async function deductCredits(userId: string, amount: number): Promise<boolean> {
+export async function deductCredits(userId: string, amount: number, jobId?: string): Promise<boolean> {
+  if (jobId) {
+    const deductedJobs = JSON.parse(localStorage.getItem('deducted_jobs') || '{}');
+    if (deductedJobs[jobId]) {
+      console.log(`[Credits] Already deducted for job ${jobId}`);
+      return true;
+    }
+    deductedJobs[jobId] = true;
+    localStorage.setItem('deducted_jobs', JSON.stringify(deductedJobs));
+  }
   console.log(`[Credits] Deducting ${amount} credits for user ${userId}`)
   // TODO: Implement actual backend deduction
   
   // Local Free Trial tracking
   const count = parseInt(localStorage.getItem('free_exports') || '0', 10)
-  localStorage.setItem('free_exports', (count + 1).toString())
+  localStorage.setItem('free_exports', (count + amount).toString());
+  window.dispatchEvent(new Event('syncframe:credits-updated'))
   
   return true
 }

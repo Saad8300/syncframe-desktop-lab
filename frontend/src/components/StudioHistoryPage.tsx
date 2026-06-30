@@ -20,7 +20,7 @@ import {
   IconArrowUp,
   IconArrowDown
 } from './icons'
-import { getHistory, deleteHistoryItem, clearHistory } from '../utils/api'
+import { getHistory, deleteHistoryItem, clearHistory , resolveBackendUrl} from '../utils/api'
 import { loadSettings } from '../utils/appSettings'
 import StudioPageHeader from './StudioPageHeader'
 
@@ -184,7 +184,7 @@ export default function StudioHistoryPage() {
   const handleDownload = (item: any) => {
     if (!item.output_url) return
     const a = document.createElement('a')
-    a.href = item.output_url
+    a.href = resolveBackendUrl(item.output_url)
     a.download = item.output_name || 'export'
     a.target = '_blank'
     a.rel = 'noopener noreferrer'
@@ -532,7 +532,7 @@ export default function StudioHistoryPage() {
                         <div className="flex items-center justify-end gap-1.5 opacity-40 group-hover:opacity-100 transition-opacity">
                           {item.output_url ? (
                             <>
-                              <a href={item.output_url} target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition-colors" style={{ color: 'var(--text-primary)' }} title="Open / Preview">
+                              <a href={resolveBackendUrl(item.output_url)} target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition-colors" style={{ color: 'var(--text-primary)' }} title="Open / Preview">
                                 <IconArrowRight size={16} className="-rotate-45" />
                               </a>
                               <button onClick={() => handleDownload(item)} className="p-2 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition-colors" style={{ color: 'var(--text-primary)' }} title="Download">
@@ -610,7 +610,7 @@ export default function StudioHistoryPage() {
                     </button>
                     <div className="flex items-center gap-1">
                       {item.output_url && (
-                        <a href={item.output_url} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-lg hover:bg-black/10 dark:hover:bg-white/10" style={{ color: 'var(--text-primary)' }} title="Open">
+                        <a href={resolveBackendUrl(item.output_url)} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-lg hover:bg-black/10 dark:hover:bg-white/10" style={{ color: 'var(--text-primary)' }} title="Open">
                           <IconArrowRight size={14} className="-rotate-45" />
                         </a>
                       )}
@@ -679,7 +679,7 @@ export default function StudioHistoryPage() {
                     <button onClick={() => handleDownload(detailsItem)} className="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors hover:bg-black/10 dark:hover:bg-white/10 border" style={{ color: 'var(--text-primary)', borderColor: 'var(--border-default)' }}>
                       <IconDownload size={14} /> Download
                     </button>
-                    <a href={detailsItem.output_url} target="_blank" rel="noopener noreferrer" className="px-5 py-2 rounded-xl text-xs font-bold text-white shadow-sm hover:opacity-90 transition-opacity flex items-center gap-2" style={{ background: 'var(--accent-primary)' }}>
+                    <a href={resolveBackendUrl(detailsItem.output_url)} target="_blank" rel="noopener noreferrer" className="px-5 py-2 rounded-xl text-xs font-bold text-white shadow-sm hover:opacity-90 transition-opacity flex items-center gap-2" style={{ background: 'var(--accent-primary)' }}>
                       Open / Preview <IconArrowRight size={14} className="-rotate-45" />
                     </a>
                   </>

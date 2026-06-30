@@ -1,3 +1,4 @@
+import { deductCredits } from '../lib/credits';
 // components/VideoTimelinePage.tsx — Video Timeline workflow (Batch 10B + 10C)
 
 import React, { useState, useCallback, useEffect, useRef } from 'react'
@@ -36,7 +37,7 @@ import type {
   JobStatus,
   GenerateResponse,
 } from '../types'
-import { startVideoTimelineJob, createVideoTimelineBatchJob } from '../utils/api'
+import { startVideoTimelineJob, createVideoTimelineBatchJob , resolveBackendUrl} from '../utils/api'
 import { loadSettings } from '../utils/appSettings'
 import { consumePendingTemplate, saveTemplate } from '../utils/templateStore'
 
@@ -209,7 +210,7 @@ function VideoDropZone({
 function VideoTimelineResult({
   result, rowCount, settings,
 }: { result: GenerateResponse; rowCount: number; settings: VideoTimelineSettings }) {
-  const videoUrl = result.output_video_url
+  const videoUrl = resolveBackendUrl(result.output_video_url || "")
   const hasVideo = result.success && videoUrl
   const filename = result.output_filename ?? 'video_timeline.mp4'
 

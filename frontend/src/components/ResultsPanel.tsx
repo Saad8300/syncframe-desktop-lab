@@ -1,3 +1,4 @@
+import { resolveBackendUrl } from '../utils/api';
 // components/ResultsPanel.tsx – Premium export results panel
 
 import React, { useState } from 'react'
@@ -109,7 +110,7 @@ const CHIP_LABELS: Record<string, string> = {
 export default function ResultsPanel({ result, settings }: ResultsPanelProps) {
   const [timelineOpen, setTimelineOpen] = useState(false)
 
-  const videoUrl      = result.output_video_url
+  const videoUrl      = resolveBackendUrl(result.output_video_url || "")
   const hasVideo      = result.success && videoUrl
   const totalItems    = result.timeline_report.length
   const totalWarns    = result.warnings.length

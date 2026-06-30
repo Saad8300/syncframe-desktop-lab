@@ -1,3 +1,4 @@
+import { deductCredits } from '../lib/credits';
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import {
   IconMusic,

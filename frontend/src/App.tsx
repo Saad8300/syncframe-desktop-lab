@@ -478,8 +478,8 @@ export default function App() {
     }
     
     if (jobStatus.status === 'completed') {
-      if (user && usedCredits > 0) {
-        await deductCredits(user.id, usedCredits)
+      if (usedCredits > 0) {
+        await deductCredits(user?.id || "local", usedCredits, jobStatus.job_id)
       }
       setResult({
         success: true,

@@ -14,7 +14,7 @@ import {
   getBatchState, startBatchQueue,
   pauseBatchAfterCurrent, stopBatchQueue, retryFailedBatchJobs,
   retryBatchJob, BatchState
-} from '../utils/api'
+, resolveBackendUrl} from '../utils/api'
 import { notifyBatchQueueCompleted, notifyBatchJobFailed } from '../utils/notifications'
 import { usePlan } from '../hooks/usePlan'
 import { useCredits } from '../hooks/useCredits'
@@ -570,7 +570,7 @@ export default function BatchVideoGeneratorPage() {
 function JobRow({ job, isSelected, onSelect, onMoveUp, onMoveDown, onDuplicate, onRetry, onDelete }: any) {
   const isQueued = job.status === 'queued'
   const isRunning = job.status === 'running'
-  const isCompleted = job.status === 'completed'
+  const isCompleted = job.status === 'completed';
   const isFailed = job.status === 'failed' || job.status === 'cancelled'
 
   return (
@@ -639,10 +639,10 @@ function JobRow({ job, isSelected, onSelect, onMoveUp, onMoveDown, onDuplicate, 
 
         {isCompleted && job.output_url ? (
           <div className="flex items-center gap-2 mr-2">
-            <a href={`${API_BASE_URL}${job.output_url}`} target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded-lg text-xs font-bold transition-colors bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10" style={{ color: 'var(--text-primary)' }}>
+            <a href={resolveBackendUrl(job.output_url || "")} target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded-lg text-xs font-bold transition-colors bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10" style={{ color: 'var(--text-primary)' }}>
               Open
             </a>
-            <a href={`${API_BASE_URL}${job.output_url}`} download className="px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-opacity hover:opacity-90 shadow-sm" style={{ background: 'var(--color-accent)' }}>
+            <a href={resolveBackendUrl(job.output_url || "")} download className="px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-opacity hover:opacity-90 shadow-sm" style={{ background: 'var(--color-accent)' }}>
               Download
             </a>
           </div>
