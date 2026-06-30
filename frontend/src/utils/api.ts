@@ -416,7 +416,8 @@ export async function createMediaTimelineBatchJob(
 
 /** Poll a job's current status. */
 export async function getJobStatus(jobId: string): Promise<JobStatus> {
-  const res = await fetch(apiUrl('/api/jobs/${jobId}/status'), {
+  if (!jobId) throw new Error("Invalid Job ID")
+  const res = await fetch(apiUrl(`/api/jobs/${jobId}/status`), {
     signal: AbortSignal.timeout(8000),
   })
   if (!res.ok) {
@@ -428,7 +429,8 @@ export async function getJobStatus(jobId: string): Promise<JobStatus> {
 
 /** Request cancellation of a running job. */
 export async function cancelJob(jobId: string): Promise<void> {
-  const res = await fetch(apiUrl('/api/jobs/${jobId}/cancel'), {
+  if (!jobId) throw new Error("Invalid Job ID")
+  const res = await fetch(apiUrl(`/api/jobs/${jobId}/cancel`), {
     method: 'POST',
     signal: AbortSignal.timeout(8000),
   })
@@ -671,7 +673,7 @@ export async function getHistoryStats(): Promise<any> {
 }
 
 export async function deleteHistoryItem(id: string): Promise<void> {
-  const res = await fetch(apiUrl('/api/history/${id}'), { method: 'DELETE' })
+  const res = await fetch(apiUrl(`/api/history/${id}`), { method: 'DELETE' })
   if (!res.ok) throw new Error("Failed to delete history item")
 }
 
@@ -709,13 +711,13 @@ export async function createBatchJob(payload: any): Promise<any> {
 }
 
 export async function getBatchJob(id: string): Promise<any> {
-  const res = await fetch(apiUrl('/api/batch/jobs/${id}'))
+  const res = await fetch(apiUrl(`/api/batch/jobs/${id}`))
   if (!res.ok) throw new Error("Failed to get batch job")
   return res.json()
 }
 
 export async function updateBatchJob(id: string, payload: any): Promise<any> {
-  const res = await fetch(apiUrl('/api/batch/jobs/${id}'), {
+  const res = await fetch(apiUrl(`/api/batch/jobs/${id}`), {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -725,7 +727,7 @@ export async function updateBatchJob(id: string, payload: any): Promise<any> {
 }
 
 export async function deleteBatchJob(id: string): Promise<void> {
-  const res = await fetch(apiUrl('/api/batch/jobs/${id}'), { method: 'DELETE' })
+  const res = await fetch(apiUrl(`/api/batch/jobs/${id}`), { method: 'DELETE' })
   if (!res.ok) throw new Error("Failed to delete batch job")
 }
 
@@ -750,17 +752,17 @@ export async function clearAllBatchJobs(): Promise<void> {
 }
 
 export async function moveBatchJobUp(id: string): Promise<void> {
-  const res = await fetch(apiUrl('/api/batch/jobs/${id}/move-up'), { method: 'POST' })
+  const res = await fetch(apiUrl(`/api/batch/jobs/${id}/move-up`), { method: 'POST' })
   if (!res.ok) throw new Error("Failed to move job up")
 }
 
 export async function moveBatchJobDown(id: string): Promise<void> {
-  const res = await fetch(apiUrl('/api/batch/jobs/${id}/move-down'), { method: 'POST' })
+  const res = await fetch(apiUrl(`/api/batch/jobs/${id}/move-down`), { method: 'POST' })
   if (!res.ok) throw new Error("Failed to move job down")
 }
 
 export async function duplicateBatchJob(id: string): Promise<any> {
-  const res = await fetch(apiUrl('/api/batch/jobs/${id}/duplicate'), { method: 'POST' })
+  const res = await fetch(apiUrl(`/api/batch/jobs/${id}/duplicate`), { method: 'POST' })
   if (!res.ok) throw new Error("Failed to duplicate job")
   return res.json()
 }
@@ -808,7 +810,7 @@ export async function retryFailedBatchJobs(): Promise<any> {
 }
 
 export async function retryBatchJob(jobId: string): Promise<any> {
-  const res = await fetch(apiUrl('/api/batch/jobs/${jobId}/retry'), { method: 'POST' })
+  const res = await fetch(apiUrl(`/api/batch/jobs/${jobId}/retry`), { method: 'POST' })
   if (!res.ok) throw new Error("Failed to retry job")
   return res.json()
 }
