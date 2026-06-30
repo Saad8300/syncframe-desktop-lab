@@ -52,6 +52,7 @@ import batch_queue_runner
 import notification_integration_store
 import notification_webhook_sender
 import credit_estimator
+from access_control import check_access
 from pydantic import BaseModel
 
 def make_clean_filename(raw_name: str, default_name: str, extension: str) -> str:
@@ -253,6 +254,21 @@ async def jobs_start(
         raise HTTPException(400, f"Invalid export_resolution '{export_resolution}'. Valid: {sorted(VALID_EXPORT_RESOLUTIONS)}")
     if render_profile not in VALID_RENDER_PROFILES:
         raise HTTPException(400, f"Invalid render_profile '{render_profile}'. Valid: {sorted(VALID_RENDER_PROFILES)}")
+
+    # ── Placeholder Backend Access Control ────────────────────────
+    # In the future, parse authorization JWT here to get user_id & plan.
+    access = check_access(
+        user_id="placeholder_user",
+        plan_id="pro", # Mocking as pro to allow tests for now
+        tool="video_export",
+        options={
+            "resolution": export_resolution,
+            "duration_seconds": 60, # Mocking duration
+            "is_premium_template": False
+        }
+    )
+    if not access["allowed"]:
+        raise HTTPException(403, access["reason"])
 
     # ── Normalise Batch 9A params ─────────────────────────────────
     valid_motion_effects   = {"none","slow_zoom_in","slow_zoom_out","ken_burns","pan_left","pan_right","pan_up","pan_down","subtle_random","dynamic_shorts"}
@@ -2270,6 +2286,17 @@ def api_get_batch_state():
 
 @app.post("/api/batch/start")
 def api_start_batch_queue():
+    # ── Placeholder Backend Access Control ────────────────────────
+    # In the future, parse authorization JWT here to get user_id & plan.
+    access = check_access(
+        user_id="placeholder_user",
+        plan_id="pro", # Mocking as pro
+        tool="batch_video",
+        options={"is_batch": True}
+    )
+    if not access["allowed"]:
+        raise HTTPException(403, access["reason"])
+        
     res = batch_queue_runner.start_runner()
     return JSONResponse(content=res)
 

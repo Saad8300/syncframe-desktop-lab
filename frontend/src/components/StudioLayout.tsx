@@ -14,6 +14,7 @@ import { CreditsBadge } from './billing/CreditsBadge'
 import { AccessLimitModal } from './billing/AccessLimitModal'
 import { usePlan } from '../hooks/usePlan'
 import { useCredits } from '../hooks/useCredits'
+import { WEBSITE_URLS } from '../lib/websiteLinks'
 
 export type StudioTab = 'tools' | 'batch_video' | 'dashboard' | 'history' | 'templates' | 'settings' | 'help' | string
 
@@ -51,15 +52,15 @@ function getLabelForId(id: SidebarItemId): string {
 }
 
 export default function StudioLayout({ children, activeTab, onNavigate, isDark, toggleTheme, backendStatus }: StudioLayoutProps) {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true' } catch { return false }
   })
   const [sidebarItems, setSidebarItems] = useState<SidebarItemId[]>(() => loadSidebarItems())
   const { user, isAuthenticated, signOut, setAuthModalOpen } = useAuth()
+  const { requireAuth } = useAuth()
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const { plan } = usePlan()
   const { remaining } = useCredits()
-  const [managePlanModalOpen, setManagePlanModalOpen] = useState(false)
 
   useEffect(() => {
     try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed)) } catch { /* noop */ }
@@ -237,15 +238,17 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
                   <div className="mt-1 flex flex-col gap-1 items-start">
                     <PlanBadge />
                     <CreditsBadge />
-                    <button
-                      onClick={() => setManagePlanModalOpen(true)}
+                    <a
+                      href={WEBSITE_URLS.ACCOUNT}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="text-[10px] uppercase font-bold tracking-wider mt-1 transition-colors"
-                      style={{ color: 'var(--accent-primary)' }}
+                      style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}
                       onMouseEnter={e => e.currentTarget.style.color = '#fff'}
                       onMouseLeave={e => e.currentTarget.style.color = 'var(--accent-primary)'}
                     >
                       Manage Plan
-                    </button>
+                    </a>
                   </div>
                 </div>
                 {/* Logout button */}
@@ -309,14 +312,7 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
         </div>
       </div>
 
-      {/* ── Manage Plan Modal ── */}
-      <AccessLimitModal
-        isOpen={managePlanModalOpen}
-        onClose={() => setManagePlanModalOpen(false)}
-        reason="Plan upgrades are managed securely on the SyncFrame Studio website."
-        currentPlan={plan?.display_name || 'Free Trial'}
-        currentCredits={remaining}
-      />
+
 
     </div>
   )

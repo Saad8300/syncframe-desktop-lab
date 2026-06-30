@@ -90,7 +90,7 @@ PLANS = {
             "max_video_length": 900,
             "max_audio_length": 1800,
             "max_timestamp_length": 1800,
-            "max_resolution": "1080p",
+            "max_resolution": "2K",
             "watermark": False,
             "batch_enabled": True,
             "n8n_enabled": True,

@@ -8,7 +8,7 @@ Running the SQL schema creates the core foundation for a SaaS billing and credit
 - **`profiles`**: User metadata.
 - **`plans`**: Catalog of available plans (Free Trial, Standard, Pro, Ultra).
 - **`user_subscriptions`**: Links users to a specific plan and period.
-- **`user_credits`**: Tracks remaining monthly/trial credits.
+- **`user_credits`**: Tracks remaining monthly/trial credits and `free_video_exports_used`.
 - **`credit_transactions`**: Ledger for all granted and deducted credits.
 - **`usage_events`**: Tracks every generation attempt and its credit cost.
 

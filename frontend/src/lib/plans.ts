@@ -1,3 +1,5 @@
+import { getFreeExportCount } from './credits'
+
 export interface PlanLimits {
   max_video_exports?: number
   max_video_length: number
@@ -37,6 +39,8 @@ export interface ToolAccessResult {
   upgradeRequired: boolean
   planLimitExceeded: boolean
   requiredPlan?: string
+  limitType: "login" | "plan" | "credits" | "duration" | "resolution" | "tool" | "batch" | "free_exports" | "none"
+  suggestedFix?: string
 }
 
 export const FALLBACK_FREE_PLAN: Plan = {
@@ -83,7 +87,9 @@ export function canUseTool(
       requiredCredits: 0,
       upgradeRequired: true,
       planLimitExceeded: true,
-      requiredPlan: 'Pro' // Or whatever
+      requiredPlan: 'Pro',
+      limitType: 'batch',
+      suggestedFix: 'Upgrade to Pro or Ultra'
     }
   }
 
@@ -93,7 +99,10 @@ export function canUseTool(
       reason: `n8n Webhook Automations are not available on the ${currentPlan.display_name} plan.`,
       requiredCredits: 0,
       upgradeRequired: true,
-      planLimitExceeded: true
+      planLimitExceeded: true,
+      requiredPlan: 'Pro',
+      limitType: 'tool',
+      suggestedFix: 'Upgrade to Pro or Ultra'
     }
   }
 
@@ -103,7 +112,25 @@ export function canUseTool(
       reason: `Premium templates are not available on the ${currentPlan.display_name} plan.`,
       requiredCredits: 0,
       upgradeRequired: true,
-      planLimitExceeded: true
+      planLimitExceeded: true,
+      requiredPlan: 'Pro',
+      limitType: 'tool',
+      suggestedFix: 'Upgrade to Pro or Ultra'
+    }
+  }
+
+  if (currentPlan.id === 'free_trial' && (tool === 'video_export' || tool === 'batch_video')) {
+    if (getFreeExportCount() >= 3) {
+      return {
+        allowed: false,
+        reason: 'You have reached the maximum of 3 free exports.',
+        requiredCredits: 0,
+        upgradeRequired: true,
+        planLimitExceeded: true,
+        requiredPlan: 'Standard',
+        limitType: 'tool',
+        suggestedFix: 'Upgrade your plan to continue creating videos'
+      }
     }
   }
   
@@ -115,7 +142,10 @@ export function canUseTool(
         reason: `Video length exceeds your plan limit (${limits.max_video_length}s).`,
         requiredCredits: 0,
         upgradeRequired: true,
-        planLimitExceeded: true
+        planLimitExceeded: true,
+        requiredPlan: dur > 900 ? 'Ultra' : (dur > 180 ? 'Pro' : 'Standard'),
+        limitType: 'duration',
+        suggestedFix: 'Shorten your video or upgrade your plan'
       }
     }
     const resMap: Record<string, number> = { "720p": 720, "1080p": 1080, "2K": 1440, "4K": 2160 }
@@ -128,7 +158,9 @@ export function canUseTool(
         requiredCredits: 0,
         upgradeRequired: true,
         planLimitExceeded: true,
-        requiredPlan: reqRes >= 2160 ? 'Ultra' : (reqRes >= 1080 ? 'Standard' : 'Pro')
+        requiredPlan: reqRes >= 2160 ? 'Ultra' : (reqRes >= 1080 ? 'Standard' : 'Pro'),
+        limitType: 'resolution',
+        suggestedFix: 'Select a lower resolution or upgrade your plan'
       }
     }
   } else if (tool === 'audio_merger') {
@@ -138,7 +170,10 @@ export function canUseTool(
         reason: `Audio length exceeds your plan limit (${limits.max_audio_length}s).`,
         requiredCredits: 0,
         upgradeRequired: true,
-        planLimitExceeded: true
+        planLimitExceeded: true,
+        requiredPlan: dur > 1800 ? 'Ultra' : (dur > 300 ? 'Pro' : 'Standard'),
+        limitType: 'duration',
+        suggestedFix: 'Shorten your audio or upgrade your plan'
       }
     }
   } else if (tool === 'script_timestamp') {
@@ -148,7 +183,10 @@ export function canUseTool(
         reason: `Script duration exceeds your plan limit (${limits.max_timestamp_length}s).`,
         requiredCredits: 0,
         upgradeRequired: true,
-        planLimitExceeded: true
+        planLimitExceeded: true,
+        requiredPlan: dur > 1800 ? 'Ultra' : (dur > 300 ? 'Pro' : 'Standard'),
+        limitType: 'duration',
+        suggestedFix: 'Shorten your script or upgrade your plan'
       }
     }
   }
@@ -160,7 +198,9 @@ export function canUseTool(
       reason: `Insufficient credits. You need ${estimatedCredits}, but only have ${credits}.`,
       requiredCredits: estimatedCredits,
       upgradeRequired: true,
-      planLimitExceeded: false
+      planLimitExceeded: false,
+      limitType: 'credits',
+      suggestedFix: 'Upgrade your plan to get more credits'
     }
   }
 
@@ -169,6 +209,7 @@ export function canUseTool(
     reason: 'OK',
     requiredCredits: estimatedCredits,
     upgradeRequired: false,
-    planLimitExceeded: false
+    planLimitExceeded: false,
+    limitType: 'none'
   }
 }

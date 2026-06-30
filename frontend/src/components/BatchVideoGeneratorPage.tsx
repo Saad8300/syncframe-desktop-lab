@@ -19,10 +19,12 @@ import { notifyBatchQueueCompleted, notifyBatchJobFailed } from '../utils/notifi
 import { usePlan } from '../hooks/usePlan'
 import { useCredits } from '../hooks/useCredits'
 import { AccessLimitModal } from './billing/AccessLimitModal'
+import { estimateCredits, reserveCredits } from '../lib/credits'
+import type { ToolAccessResult } from '../lib/plans'
 import { canUseTool } from '../lib/plans'
 
 export default function BatchVideoGeneratorPage() {
-  const { requireAuth } = useAuth()
+  const { requireAuth, user } = useAuth()
   const { plan } = usePlan()
   const { remaining } = useCredits()
   const [jobs, setJobs] = useState<any[]>([])
@@ -126,12 +128,24 @@ export default function BatchVideoGeneratorPage() {
   const handleStartQueue = async () => {
     if (!requireAuth()) return
 
-    const access = canUseTool(plan, remaining, 'batch_video', { is_batch: true })
+    const pendingJobs = jobs.filter((j: any) => j.status === 'queued' || j.status === 'failed') || []
+    const estimatedCredits = await estimateCredits('batch_video', {
+      is_batch: true,
+      num_videos: pendingJobs.length || 1,
+      resolution: '1080p', // rough estimate
+      duration_seconds: 60
+    })
+
+    const access = canUseTool(plan, remaining, 'batch_video', { is_batch: true }, estimatedCredits)
     if (!access.allowed) {
       setLimitModalReason(access.reason)
       setLimitModalRequiredPlan(access.requiredPlan)
       setLimitModalOpen(true)
       return
+    }
+
+    if (user) {
+      await reserveCredits(user.id, estimatedCredits)
     }
 
     setIsQueueLoading(true)

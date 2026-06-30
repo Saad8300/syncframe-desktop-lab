@@ -8,6 +8,11 @@ import {
   IconZap,
 } from './icons'
 import StudioPageHeader from './StudioPageHeader'
+import { usePlan } from '../hooks/usePlan'
+import { useCredits } from '../hooks/useCredits'
+import { canUseTool } from '../lib/plans'
+import { AccessLimitModal } from './billing/AccessLimitModal'
+import { PlanBadge } from './billing/PlanBadge'
 
 // ── Inline icons ────────────────────────────────────────────────────────────
 
@@ -150,6 +155,25 @@ const UPCOMING_TOOLS: {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function StudioToolsPage({ onSelectTool }: Props) {
+  const { plan } = usePlan()
+  const { remaining } = useCredits()
+
+  // Access Limit Modal state
+  const [limitModalOpen, setLimitModalOpen] = useState(false)
+  const [limitModalReason, setLimitModalReason] = useState('')
+  const [limitModalRequiredPlan, setLimitModalRequiredPlan] = useState<string | undefined>(undefined)
+
+  const handleSelectTool = (toolId: ViewMode) => {
+    const access = canUseTool(plan, remaining, toolId, { is_batch: toolId === 'batch_video' })
+    if (!access.allowed) {
+      setLimitModalReason(access.reason)
+      setLimitModalRequiredPlan(access.requiredPlan)
+      setLimitModalOpen(true)
+      return
+    }
+    onSelectTool(toolId)
+  }
+
   return (
     <div className="w-full px-5 sm:px-8 py-8 space-y-10 animate-fade-in" style={{ maxWidth: 1280 }}>
 
@@ -166,9 +190,18 @@ export default function StudioToolsPage({ onSelectTool }: Props) {
           <div className="flex-1 h-px" style={{ background: 'var(--border-subtle)' }} />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-          {ACTIVE_TOOLS.map(tool => (
-            <ActiveToolCard key={tool.id} tool={tool} onClick={() => onSelectTool(tool.id)} />
-          ))}
+          {ACTIVE_TOOLS.map(tool => {
+            const access = canUseTool(plan, remaining, tool.id, { is_batch: tool.id === 'batch_video' })
+            return (
+              <ActiveToolCard
+                key={tool.id}
+                tool={tool}
+                onClick={() => handleSelectTool(tool.id)}
+                isLocked={!access.allowed}
+                requiredPlan={access.requiredPlan}
+              />
+            )
+          })}
         </div>
       </section>
 
@@ -185,6 +218,16 @@ export default function StudioToolsPage({ onSelectTool }: Props) {
         </div>
       </section>
 
+    {/* ── Access Limit Modal ── */}
+    <AccessLimitModal
+      isOpen={limitModalOpen}
+      onClose={() => setLimitModalOpen(false)}
+      reason={limitModalReason}
+      requiredPlan={limitModalRequiredPlan}
+      currentPlan={plan?.display_name || 'Free Trial'}
+      currentCredits={remaining}
+    />
+
     </div>
   )
 }
@@ -194,9 +237,13 @@ export default function StudioToolsPage({ onSelectTool }: Props) {
 function ActiveToolCard({
   tool,
   onClick,
+  isLocked,
+  requiredPlan
 }: {
   tool: typeof ACTIVE_TOOLS[number]
   onClick: () => void
+  isLocked: boolean
+  requiredPlan?: string
 }) {
   const [hovered, setHovered] = useState(false)
 
@@ -225,17 +272,20 @@ function ActiveToolCard({
         <div
           className="w-10 h-10 rounded-xl flex items-center justify-center transition-transform duration-200"
           style={{
-            background: `${tool.accentColor}18`,
-            border: `1px solid ${tool.accentColor}35`,
-            color: tool.accentColor,
-            transform: hovered ? 'scale(1.08)' : 'scale(1)',
+            background: isLocked ? 'rgba(255,255,255,0.05)' : `${tool.accentColor}18`,
+            border: isLocked ? '1px solid var(--border-subtle)' : `1px solid ${tool.accentColor}35`,
+            color: isLocked ? 'var(--text-muted)' : tool.accentColor,
+            transform: hovered && !isLocked ? 'scale(1.08)' : 'scale(1)',
           }}
         >
-          {tool.icon}
+          {isLocked ? <IconLock size={18} /> : tool.icon}
         </div>
+        {requiredPlan && (
+          <PlanBadge planId={requiredPlan.toLowerCase()} size="sm" />
+        )}
       </div>
 
-      <div className="flex-1 space-y-1">
+      <div className={`flex-1 space-y-1 ${isLocked ? 'opacity-60' : ''}`}>
         <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
           {tool.title}
         </h3>

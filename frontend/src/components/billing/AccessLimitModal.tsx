@@ -1,7 +1,6 @@
 import React from 'react'
 import { IconZap, IconX } from '../icons'
-
-export const PRICING_URL = 'https://syncframestudio.com/pricing'
+import { WEBSITE_URLS } from '../../lib/websiteLinks'
 
 interface AccessLimitModalProps {
   isOpen: boolean
@@ -83,7 +82,7 @@ export function AccessLimitModal({
           <div className="w-full flex flex-col gap-3">
             {!isLoginRequired && (
               <a
-                href={PRICING_URL}
+                href={WEBSITE_URLS.PRICING}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full block py-2.5 rounded-xl font-semibold text-sm text-center transition-all"

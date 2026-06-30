@@ -152,9 +152,12 @@ export default function ExportPresetPanel({
   const [limitModalOpen, setLimitModalOpen] = useState(false)
   const [limitRequiredPlan, setLimitRequiredPlan] = useState<string>('Pro')
 
+  const [limitModalReason, setLimitModalReason] = useState('')
+
   function handleSelectChange(preset: ExportPreset) {
     if (!hasRequiredPlan(currentPlanName, preset.requiredPlan)) {
       setLimitRequiredPlan(preset.requiredPlan!)
+      setLimitModalReason(`The ${preset.label} preset requires the ${preset.requiredPlan} plan.`)
       setLimitModalOpen(true)
       return
     }
@@ -373,6 +376,7 @@ export default function ExportPresetPanel({
         onClose={() => setLimitModalOpen(false)}
         requiredPlan={limitRequiredPlan}
         currentPlan={currentPlanName}
+        reason={limitModalReason}
       />
     </div>
   )

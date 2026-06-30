@@ -47,7 +47,9 @@ import { loadSettings, applyThemeMode, applyAccentColor, saveSettings, AppSettin
 import { consumePendingTemplate, saveTemplate } from './utils/templateStore'
 import { usePlan } from './hooks/usePlan'
 import { useCredits } from './hooks/useCredits'
-import { canUseTool } from './lib/plans'
+import { canUseTool, Plan } from './lib/plans'
+import { estimateCredits, reserveCredits, deductCredits, refundCredits } from './lib/credits'
+import type { ToolAccessResult } from './lib/plans'
 
 // ── Default settings ────────────────────────────────────────────────────────
 
@@ -222,7 +224,7 @@ function SummaryChip({ label, value, active }: { label: string; value: string; a
 export type ViewMode = 'landing' | 'tools' | 'dashboard' | 'history' | 'templates' | 'settings' | 'tool:image' | 'tool:video' | 'tool:media' | 'tool:audio_merger' | 'tool:script_timestamp' | 'tool:batch_video' | 'batch_video'
 
 export default function App() {
-  const { isAuthenticated, loading: authLoading, requireAuth } = useAuth()
+  const { user, isAuthenticated, loading: authLoading, requireAuth } = useAuth()
   const { plan } = usePlan()
   const { remaining } = useCredits()
 
@@ -401,15 +403,27 @@ export default function App() {
     if (!requireAuth()) return;
     if ((audioInputMode === 'single' ? !audioFile : !audioZip) || !imagesZip || !csvFile) return
 
+    const estimatedCredits = await estimateCredits('video_export', {
+      resolution: settings.exportResolution,
+      is_premium_template: false,
+      duration_seconds: audioDuration || 60
+    })
+
     const access = canUseTool(plan, remaining, 'video_export', {
       resolution: settings.exportResolution,
-      is_premium_template: false
-    })
+      is_premium_template: false,
+      duration_seconds: audioDuration || 60
+    }, estimatedCredits)
+
     if (!access.allowed) {
       setLimitModalReason(access.reason)
       setLimitModalRequiredPlan(access.requiredPlan)
       setLimitModalOpen(true)
       return
+    }
+
+    if (user) {
+      await reserveCredits(user.id, estimatedCredits)
     }
 
     setStatus('uploading')
@@ -418,6 +432,7 @@ export default function App() {
       const { job_id } = await startJob(audioInputMode, audioFile, audioZip, imagesZip, csvFile, activeSettings, introFile, outroFile, bgMusicFile)
       setCurrentJobId(job_id); setStatus('generating')
     } catch (err) {
+      if (user) await refundCredits(user.id, estimatedCredits)
       setResult({ success: false, errors: [String(err)], warnings: [], timeline_report: [] })
       setStatus('error')
     }
@@ -451,8 +466,19 @@ export default function App() {
     }
   }
 
-  const handleJobComplete = useCallback((jobStatus: JobStatus) => {
+  const handleJobComplete = useCallback(async (jobStatus: JobStatus) => {
+    let usedCredits = 0
+    if (audioDuration) {
+      usedCredits = await estimateCredits('video_export', {
+        resolution: settings.exportResolution,
+        duration_seconds: audioDuration || 60
+      })
+    }
+    
     if (jobStatus.status === 'completed') {
+      if (user && usedCredits > 0) {
+        await deductCredits(user.id, usedCredits)
+      }
       setResult({
         success: true,
         job_id: jobStatus.job_id,
@@ -466,6 +492,9 @@ export default function App() {
       setStatus('done')
       notifyRenderCompleted(jobStatus.output_filename ?? undefined)
     } else {
+      if (user && usedCredits > 0) {
+        await refundCredits(user.id, usedCredits)
+      }
       setResult({
         success: false,
         errors:  jobStatus.errors.length ? jobStatus.errors : ['Video generation failed.'],
@@ -475,13 +504,23 @@ export default function App() {
       setStatus('error')
       notifyRenderFailed(jobStatus.errors[0] || 'Unknown error')
     }
-  }, [])
+  }, [user, audioDuration, settings.exportResolution])
 
-  const handleCancelled = useCallback(() => {
-    setCurrentJobId(null); setStatus('idle')
-    setCancelledMsg('Generation cancelled.')
+  const handleCancelled = useCallback(async () => {
+    setCurrentJobId(null);
+    setStatus('idle')
+    setCancelledMsg("Render cancelled successfully.")
     setTimeout(() => setCancelledMsg(null), 4000)
-  }, [])
+    setResult(null)
+    
+    if (user && audioDuration) {
+      const usedCredits = await estimateCredits('video_export', {
+        resolution: settings.exportResolution,
+        duration_seconds: audioDuration || 60
+      })
+      await refundCredits(user.id, usedCredits)
+    }
+  }, [user, audioDuration, settings.exportResolution])
 
   // Derived
   const isAuthCallback =

@@ -28,9 +28,9 @@ The future web portal (e.g., built with Next.js/Vite) will be hosted at `https:/
 
 ## Cross-Communication Flow
 1. **Desktop App limits hit** -> Opens `AccessLimitModal`.
-2. **User clicks "Manage Plan"** -> Desktop app opens default browser to `https://syncframestudio.com/pricing`.
-3. **User purchases/upgrades on web** -> Supabase `user_plans` and `user_credits` tables are updated.
-4. **Desktop App sync** -> The desktop app automatically syncs the new database values on next focus or interval fetch.
+2. **User clicks "Manage Plan"** -> Desktop app opens default browser to `https://syncframestudio.com/account` or `https://syncframestudio.com/pricing`.
+3. **User purchases/upgrades on web** -> Supabase `user_subscriptions` and `user_credits` tables are updated.
+4. **Desktop App sync** -> The desktop app automatically syncs the new database values on next focus or interval fetch. In the future, the website portal could optionally redirect back to the desktop app using a deep link (e.g., `syncframe://auth/success`) to force an immediate refresh.
 
 ## Future Tech Stack for Web Portal
 - Next.js (App Router)
