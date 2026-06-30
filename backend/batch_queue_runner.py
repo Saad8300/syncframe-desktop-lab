@@ -22,6 +22,21 @@ from audio_helpers import prepare_single_audio, prepare_zip_audio
 
 logger = logging.getLogger(__name__)
 
+def safe_rmtree(path, *args, **kwargs):
+    kwargs.pop("ignore_errors", None)
+    if not os.path.exists(path):
+        return
+    retries = 3
+    for i in range(retries):
+        try:
+            shutil.rmtree(path, *args, **kwargs)
+            return
+        except Exception as e:
+            if i == retries - 1:
+                logger.warning(f"safe_rmtree: Failed to clean up {path} after {retries} retries: {e}")
+            else:
+                time.sleep(0.5)
+
 # Base directories (same as main.py)
 BASE_DIR = Path(__file__).resolve().parent
 TEMP_DIR = BASE_DIR / "temp"
@@ -348,7 +363,7 @@ def _process_job(job: Dict[str, Any]):
         
     finally:
         try:
-            shutil.rmtree(run_temp, ignore_errors=True)
+            safe_rmtree(run_temp, ignore_errors=True)
         except Exception:
             pass
 

@@ -13,6 +13,7 @@ import uuid
 import subprocess
 
 def _verify_mp4_audio(filepath: str) -> bool:
+    import os
     try:
         cmd = [
             "ffprobe", "-v", "error",
@@ -23,6 +24,14 @@ def _verify_mp4_audio(filepath: str) -> bool:
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         return result.stdout.strip().lower() == "audio"
+    except FileNotFoundError:
+        logger.warning(f"ffprobe not found on PATH. Falling back to size check for {filepath}")
+        if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
+            return True
+        return False
+    except subprocess.CalledProcessError as e:
+        logger.error(f"FFprobe process failed for {filepath}: {e}")
+        return False
     except Exception as e:
         logger.error(f"FFprobe check failed for {filepath}: {e}")
         return False
@@ -52,6 +61,22 @@ import batch_queue_runner
 import credit_estimator
 from access_control import check_access
 from pydantic import BaseModel
+
+
+def safe_rmtree(path, *args, **kwargs):
+    kwargs.pop("ignore_errors", None)
+    if not os.path.exists(path):
+        return
+    retries = 3
+    for i in range(retries):
+        try:
+            shutil.rmtree(path, *args, **kwargs)
+            return
+        except Exception as e:
+            if i == retries - 1:
+                logger.warning(f"safe_rmtree: Failed to clean up {path} after {retries} retries: {e}")
+            else:
+                time.sleep(0.5)
 
 def make_clean_filename(raw_name: str, default_name: str, extension: str) -> str:
     name = raw_name.strip() if raw_name and raw_name.strip() else default_name
@@ -534,7 +559,7 @@ async def jobs_start(
 
         finally:
             try:
-                shutil.rmtree(str(job_temp), ignore_errors=True)
+                safe_rmtree(str(job_temp), ignore_errors=True)
             except Exception:
                 pass
             final_status = state["status"]
@@ -762,7 +787,7 @@ async def jobs_start_script_timestamp(
         finally:
             # Cleanup temp
             try:
-                shutil.rmtree(state["temp_dir"], ignore_errors=True)
+                safe_rmtree(state["temp_dir"], ignore_errors=True)
             except:
                 pass
 
@@ -1072,7 +1097,7 @@ async def jobs_start_video_timeline(
 
         finally:
             try:
-                shutil.rmtree(str(job_temp), ignore_errors=True)
+                safe_rmtree(str(job_temp), ignore_errors=True)
             except Exception:
                 pass
             final_status = state["status"]
@@ -1395,7 +1420,7 @@ async def jobs_start_media_timeline(
 
         finally:
             try:
-                shutil.rmtree(str(job_temp), ignore_errors=True)
+                safe_rmtree(str(job_temp), ignore_errors=True)
             except Exception:
                 pass
             final_status = state["status"]
@@ -1518,7 +1543,7 @@ async def generate(
         )
     finally:
         try:
-            shutil.rmtree(str(job_temp), ignore_errors=True)
+            safe_rmtree(str(job_temp), ignore_errors=True)
         except Exception:
             pass
 
@@ -1591,7 +1616,7 @@ async def audio_merge(
         return JSONResponse(status_code=500, content={"detail": str(e)})
     finally:
         try:
-            shutil.rmtree(str(job_temp), ignore_errors=True)
+            safe_rmtree(str(job_temp), ignore_errors=True)
         except:
             pass
 # ---------------------------------------------------------------------------
@@ -1789,7 +1814,7 @@ async def api_batch_job_image_timeline(
     except Exception as e:
         logger.error(f"Error saving batch job: {e}")
         import shutil
-        shutil.rmtree(job_dir, ignore_errors=True)
+        safe_rmtree(job_dir, ignore_errors=True)
         return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
@@ -1934,7 +1959,7 @@ async def api_batch_job_video_timeline(
     except Exception as e:
         logger.error(f"Error saving batch job: {e}")
         import shutil
-        shutil.rmtree(job_dir, ignore_errors=True)
+        safe_rmtree(job_dir, ignore_errors=True)
         return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
@@ -2078,7 +2103,7 @@ async def api_batch_job_media_timeline(
     except Exception as e:
         logger.error(f"Error saving batch job: {e}")
         import shutil
-        shutil.rmtree(job_dir, ignore_errors=True)
+        safe_rmtree(job_dir, ignore_errors=True)
         return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
