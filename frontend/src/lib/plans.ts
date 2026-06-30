@@ -8,7 +8,6 @@ export interface PlanLimits {
   max_resolution: string
   watermark: boolean
   batch_enabled: boolean
-  n8n_enabled: boolean
   premium_templates: boolean
 }
 
@@ -55,7 +54,6 @@ export const FALLBACK_FREE_PLAN: Plan = {
     max_resolution: '720p',
     watermark: true,
     batch_enabled: false,
-    n8n_enabled: false,
     premium_templates: false,
   },
   features: [
@@ -73,7 +71,7 @@ export function canUseTool(
   plan: Plan | null,
   credits: number,
   tool: string,
-  requestedOptions: { duration_seconds?: number, resolution?: string, is_premium_template?: boolean, is_n8n?: boolean, is_batch?: boolean } = {},
+  requestedOptions: { duration_seconds?: number, resolution?: string, is_premium_template?: boolean, is_batch?: boolean } = {},
   estimatedCredits: number = 0
 ): ToolAccessResult {
   const currentPlan = plan || FALLBACK_FREE_PLAN
@@ -89,22 +87,11 @@ export function canUseTool(
       planLimitExceeded: true,
       requiredPlan: 'Pro',
       limitType: 'batch',
-      suggestedFix: 'Upgrade to Pro or Ultra'
+      suggestedFix: 'Upgrade to Pro or Agency'
     }
   }
 
-  if (requestedOptions.is_n8n && !limits.n8n_enabled) {
-    return {
-      allowed: false,
-      reason: `n8n Webhook Automations are not available on the ${currentPlan.display_name} plan.`,
-      requiredCredits: 0,
-      upgradeRequired: true,
-      planLimitExceeded: true,
-      requiredPlan: 'Pro',
-      limitType: 'tool',
-      suggestedFix: 'Upgrade to Pro or Ultra'
-    }
-  }
+
 
   if (requestedOptions.is_premium_template && !limits.premium_templates) {
     return {
@@ -115,7 +102,7 @@ export function canUseTool(
       planLimitExceeded: true,
       requiredPlan: 'Pro',
       limitType: 'tool',
-      suggestedFix: 'Upgrade to Pro or Ultra'
+      suggestedFix: 'Upgrade to Pro or Agency'
     }
   }
 
@@ -127,7 +114,7 @@ export function canUseTool(
         requiredCredits: 0,
         upgradeRequired: true,
         planLimitExceeded: true,
-        requiredPlan: 'Standard',
+        requiredPlan: 'Starter',
         limitType: 'tool',
         suggestedFix: 'Upgrade your plan to continue creating videos'
       }
@@ -143,7 +130,7 @@ export function canUseTool(
         requiredCredits: 0,
         upgradeRequired: true,
         planLimitExceeded: true,
-        requiredPlan: dur > 900 ? 'Ultra' : (dur > 180 ? 'Pro' : 'Standard'),
+        requiredPlan: dur > 900 ? 'Agency' : (dur > 180 ? 'Pro' : 'Starter'),
         limitType: 'duration',
         suggestedFix: 'Shorten your video or upgrade your plan'
       }
@@ -158,7 +145,7 @@ export function canUseTool(
         requiredCredits: 0,
         upgradeRequired: true,
         planLimitExceeded: true,
-        requiredPlan: reqRes >= 2160 ? 'Ultra' : (reqRes >= 1080 ? 'Standard' : 'Pro'),
+        requiredPlan: reqRes >= 2160 ? 'Agency' : (reqRes >= 1080 ? 'Starter' : 'Pro'),
         limitType: 'resolution',
         suggestedFix: 'Select a lower resolution or upgrade your plan'
       }
@@ -171,7 +158,7 @@ export function canUseTool(
         requiredCredits: 0,
         upgradeRequired: true,
         planLimitExceeded: true,
-        requiredPlan: dur > 1800 ? 'Ultra' : (dur > 300 ? 'Pro' : 'Standard'),
+        requiredPlan: dur > 1800 ? 'Agency' : (dur > 300 ? 'Pro' : 'Starter'),
         limitType: 'duration',
         suggestedFix: 'Shorten your audio or upgrade your plan'
       }
@@ -184,7 +171,7 @@ export function canUseTool(
         requiredCredits: 0,
         upgradeRequired: true,
         planLimitExceeded: true,
-        requiredPlan: dur > 1800 ? 'Ultra' : (dur > 300 ? 'Pro' : 'Standard'),
+        requiredPlan: dur > 1800 ? 'Agency' : (dur > 300 ? 'Pro' : 'Starter'),
         limitType: 'duration',
         suggestedFix: 'Shorten your script or upgrade your plan'
       }

@@ -14,7 +14,6 @@ from typing import Optional, Dict, Any
 
 import batch_queue_store
 import history_store
-import notification_webhook_sender
 from utils import make_clean_filename
 from video_generator import generate_video, GenerationCancelled
 from video_timeline_generator import generate_video_timeline, VideoTimelineCancelled
@@ -68,22 +67,6 @@ def _runner_loop():
                     runner_state.is_running = False
                     runner_state.message = "Queue finished"
                     runner_state.current_job_id = None
-                # Fire batch_queue_completed when queue empties
-                try:
-                    jobs = batch_queue_store.get_all_jobs()
-                    completed = len([j for j in jobs if j.get("status") == "completed"])
-                    failed = len([j for j in jobs if j.get("status") == "failed"])
-                    notification_webhook_sender.send_event(
-                        "batch_queue_completed",
-                        batch_info={
-                            "total_jobs": completed + failed,
-                            "completed_jobs": completed,
-                            "failed_jobs": failed,
-                        },
-                        status_message=f"Batch queue completed. {completed} succeeded, {failed} failed.",
-                    )
-                except Exception:
-                    pass
                 break
                 
             job = queued_jobs[0]
@@ -329,13 +312,6 @@ def _process_job(job: Dict[str, Any]):
         if not res.get("success"):
             err_msg = res.get("errors", ["Unknown error"])[0]
             batch_queue_store.update_job(job_id, {"status": "failed", "message": f"Failed: {err_msg}"})
-            # n8n webhook — batch_job_failed
-            notification_webhook_sender.send_event(
-                "batch_job_failed",
-                job_info={"job_id": job_id, "tool": source_tool, "title": job.get("title")},
-                error_info={"message": err_msg, "code": "BATCH_JOB_FAILED"},
-                status_message=f"Batch job failed: {err_msg}",
-            )
             return
             
         file_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
@@ -370,18 +346,6 @@ def _process_job(job: Dict[str, Any]):
             "output_url": f"/outputs/{output_filename}"
         })
         
-        # n8n webhook — batch_job_completed
-        notification_webhook_sender.send_event(
-            "batch_job_completed",
-            job_info={
-                "job_id": job_id,
-                "tool": source_tool,
-                "title": job.get("title"),
-                "output_filename": output_filename,
-            },
-            status_message="Batch job completed successfully.",
-        )
-        
     finally:
         try:
             shutil.rmtree(run_temp, ignore_errors=True)
@@ -403,17 +367,6 @@ def start_runner():
         runner_state.message = "Starting..."
         runner_state._thread = threading.Thread(target=_runner_loop, daemon=True)
         runner_state._thread.start()
-        
-        # n8n webhook — batch_queue_started
-        try:
-            queued_count = len([j for j in jobs if j.get("status") == "queued"])
-            notification_webhook_sender.send_event(
-                "batch_queue_started",
-                batch_info={"total_jobs": queued_count, "completed_jobs": 0, "failed_jobs": 0},
-                status_message=f"Batch queue started with {queued_count} job(s).",
-            )
-        except Exception:
-            pass
         
         return {"status": "started"}
 

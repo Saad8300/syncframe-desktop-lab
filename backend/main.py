@@ -49,8 +49,6 @@ from transcription_helpers import transcribe_audio_backend, format_output
 import history_store
 import batch_queue_store
 import batch_queue_runner
-import notification_integration_store
-import notification_webhook_sender
 import credit_estimator
 from access_control import check_access
 from pydantic import BaseModel
@@ -541,30 +539,7 @@ async def jobs_start(
                 pass
             final_status = state["status"]
             logger.info("Job %s finished → status=%s", job_id, final_status)
-            # ── n8n webhook notification ──────────────────────────────────────
-            if final_status == "completed":
-                notification_webhook_sender.send_event(
-                    "render_completed",
-                    job_info={
-                        "job_id": job_id,
-                        "tool": "image_timeline",
-                        "title": output_filename,
-                        "output_filename": output_filename,
-                        "resolution": export_resolution,
-                    },
-                    status_message="Image Timeline render completed successfully.",
-                )
-            elif final_status == "failed":
-                errs = state.get("errors", [])
-                notification_webhook_sender.send_event(
-                    "render_failed",
-                    job_info={"job_id": job_id, "tool": "image_timeline"},
-                    error_info={
-                        "message": errs[0] if errs else "Render failed.",
-                        "code": "RENDER_FAILED",
-                    },
-                    status_message="Image Timeline render failed.",
-                )
+
 
     thread = threading.Thread(target=run_job, daemon=True, name=f"job-{job_id[:8]}")
     thread.start()
@@ -1102,29 +1077,7 @@ async def jobs_start_video_timeline(
                 pass
             final_status = state["status"]
             logger.info("Video timeline job %s finished → status=%s", job_id, final_status)
-            # ── n8n webhook notification ──────────────────────────────────────
-            if final_status == "completed":
-                notification_webhook_sender.send_event(
-                    "render_completed",
-                    job_info={
-                        "job_id": job_id,
-                        "tool": "video_timeline",
-                        "output_filename": output_filename,
-                        "resolution": export_resolution,
-                    },
-                    status_message="Video Timeline render completed successfully.",
-                )
-            elif final_status == "failed":
-                errs = state.get("errors", [])
-                notification_webhook_sender.send_event(
-                    "render_failed",
-                    job_info={"job_id": job_id, "tool": "video_timeline"},
-                    error_info={
-                        "message": errs[0] if errs else "Render failed.",
-                        "code": "RENDER_FAILED",
-                    },
-                    status_message="Video Timeline render failed.",
-                )
+
 
     thread = threading.Thread(target=run_job, daemon=True, name=f"vtl-{job_id[:8]}")
     thread.start()
@@ -1447,29 +1400,7 @@ async def jobs_start_media_timeline(
                 pass
             final_status = state["status"]
             logger.info("Media timeline job %s finished → status=%s", job_id, final_status)
-            # ── n8n webhook notification ──────────────────────────────────────
-            if final_status == "completed":
-                notification_webhook_sender.send_event(
-                    "render_completed",
-                    job_info={
-                        "job_id": job_id,
-                        "tool": "media_timeline",
-                        "output_filename": output_filename,
-                        "resolution": export_resolution,
-                    },
-                    status_message="Media Timeline render completed successfully.",
-                )
-            elif final_status == "failed":
-                errs = state.get("errors", [])
-                notification_webhook_sender.send_event(
-                    "render_failed",
-                    job_info={"job_id": job_id, "tool": "media_timeline"},
-                    error_info={
-                        "message": errs[0] if errs else "Render failed.",
-                        "code": "RENDER_FAILED",
-                    },
-                    status_message="Media Timeline render failed.",
-                )
+
 
     thread = threading.Thread(target=run_job, daemon=True, name=f"mtl-{job_id[:8]}")
     thread.start()
@@ -2323,55 +2254,7 @@ def api_retry_single_batch_job(job_id: str):
     return JSONResponse(content={"success": True})
 
 
-# ---------------------------------------------------------------------------
-# Routes — n8n Notification Integration (Batch 18B)
-# ---------------------------------------------------------------------------
 
-class N8nSettingsPayload(BaseModel):
-    n8n_enabled: bool = False
-    n8n_webhook_url: str = ""
-    n8n_events: dict = {}
-    n8n_timeout_seconds: int = 10
-    n8n_retry_once: bool = True
-    n8n_include_output_path: bool = False
-    n8n_include_local_paths: bool = False
-
-
-@app.get("/api/notification-integrations")
-def api_get_notification_integrations():
-    """Return n8n integration settings. URL is returned for local editing."""
-    settings = notification_integration_store.get_safe_settings()
-    return JSONResponse(content=settings)
-
-
-@app.post("/api/notification-integrations")
-def api_save_notification_integrations(payload: N8nSettingsPayload):
-    """Save n8n integration settings."""
-    updates = {
-        "n8n_enabled": payload.n8n_enabled,
-        "n8n_webhook_url": payload.n8n_webhook_url.strip(),
-        "n8n_timeout_seconds": payload.n8n_timeout_seconds,
-        "n8n_retry_once": payload.n8n_retry_once,
-        "n8n_include_output_path": payload.n8n_include_output_path,
-        "n8n_include_local_paths": payload.n8n_include_local_paths,
-    }
-    if payload.n8n_events:
-        updates["n8n_events"] = payload.n8n_events
-
-    result = notification_integration_store.save_settings(updates)
-    # Return safe version
-    safe = notification_integration_store.get_safe_settings()
-    return JSONResponse(content={"success": True, "settings": safe})
-
-
-@app.post("/api/notification-integrations/test")
-def api_test_notification_webhook():
-    """Send a test payload to the configured n8n webhook."""
-    result = notification_webhook_sender.send_test_event()
-    settings = notification_integration_store.get_safe_settings()
-    result["last_delivery_status"] = settings.get("last_delivery_status")
-    result["last_delivery_at"] = settings.get("last_delivery_at")
-    return JSONResponse(content=result)
 
 
 @app.get("/outputs/{path:path}")

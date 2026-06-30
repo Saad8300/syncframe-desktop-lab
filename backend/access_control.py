@@ -15,10 +15,7 @@ def check_access(user_id: str, plan_id: str, tool: str, options: dict, credits_a
     if is_batch and not limits.get("batch_enabled"):
         return {"allowed": False, "reason": f"Batch Video Generator is not available on the {plan['display_name']} plan."}
         
-    is_n8n = options.get("is_n8n", False)
-    if is_n8n and not limits.get("n8n_enabled"):
-        return {"allowed": False, "reason": f"n8n Webhook Automations are not available on the {plan['display_name']} plan."}
-        
+
     is_premium_template = options.get("is_premium_template", False)
     if is_premium_template and not limits.get("premium_templates"):
         return {"allowed": False, "reason": f"Premium templates are not available on the {plan['display_name']} plan."}

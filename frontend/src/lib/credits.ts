@@ -36,7 +36,6 @@ export async function estimateCredits(tool: string, options: any): Promise<numbe
   if (is_batch) totalCost *= num_videos
 
   if (options.is_premium_template) totalCost += 5
-  if (options.is_n8n) totalCost += 1
 
   return totalCost
 }

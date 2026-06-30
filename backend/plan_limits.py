@@ -25,7 +25,6 @@ CREDIT_COSTS = {
     },
     "addons": {
         "premium_template": 5,
-        "n8n_trigger": 1,
     }
 }
 
@@ -49,7 +48,6 @@ PLANS = {
             "max_resolution": "720p",
             "watermark": True,
             "batch_enabled": False,
-            "n8n_enabled": False,
             "premium_templates": False
         },
         "features": [
@@ -60,10 +58,10 @@ PLANS = {
             "Watermark enabled"
         ]
     },
-    "standard": {
-        "id": "standard",
-        "display_name": "Standard",
-        "monthly_credits": 500,
+    "starter": {
+        "id": "starter",
+        "display_name": "Starter",
+        "monthly_credits": 1500,
         "limits": {
             "max_video_length": 180,
             "max_audio_length": 300,
@@ -71,11 +69,10 @@ PLANS = {
             "max_resolution": "1080p",
             "watermark": True,
             "batch_enabled": False,
-            "n8n_enabled": False,
             "premium_templates": False
         },
         "features": [
-            "500 credits / month",
+            "1,500 credits / month",
             "Up to 3-min videos",
             "1080p export",
             "Basic timeline tools",
@@ -85,7 +82,7 @@ PLANS = {
     "pro": {
         "id": "pro",
         "display_name": "Pro",
-        "monthly_credits": 2000,
+        "monthly_credits": 6000,
         "limits": {
             "max_video_length": 900,
             "max_audio_length": 1800,
@@ -93,21 +90,20 @@ PLANS = {
             "max_resolution": "2K",
             "watermark": False,
             "batch_enabled": True,
-            "n8n_enabled": True,
             "premium_templates": True
         },
         "features": [
-            "2,000 credits / month",
+            "6,000 credits / month",
             "Up to 15-min videos",
             "No watermark",
             "Batch Video Generator",
             "Premium templates",
-            "n8n automations"
+            "Advanced workflow controls"
         ]
     },
-    "ultra": {
-        "id": "ultra",
-        "display_name": "Ultra",
+    "agency": {
+        "id": "agency",
+        "display_name": "Agency",
         "monthly_credits": 10000,
         "limits": {
             "max_video_length": 3600,
@@ -116,7 +112,6 @@ PLANS = {
             "max_resolution": "4K",
             "watermark": False,
             "batch_enabled": True,
-            "n8n_enabled": True,
             "premium_templates": True
         },
         "features": [
@@ -124,7 +119,8 @@ PLANS = {
             "High-volume fair use",
             "4K export",
             "Large batch generation",
-            "Commercial usage"
+            "Commercial usage",
+            "Advanced workflow controls"
         ]
     }
 }

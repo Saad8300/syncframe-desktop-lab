@@ -16,7 +16,6 @@ class EstimateRequest(BaseModel):
     resolution: str = "1080p" # "720p", "1080p", "2K", "4K"
     count: int = 1
     premium_template: bool = False
-    n8n_trigger: bool = False
 
 @plans_router.get("/catalog")
 def get_plans_catalog():
@@ -71,11 +70,7 @@ def estimate_credits(req: EstimateRequest):
         addon_cost = CREDIT_COSTS["addons"]["premium_template"] * req.count
         total_credits += addon_cost
         breakdown.append({"label": "Premium Template Addon", "credits": addon_cost})
-        
-    if req.n8n_trigger:
-        addon_cost = CREDIT_COSTS["addons"]["n8n_trigger"] * req.count
-        total_credits += addon_cost
-        breakdown.append({"label": "n8n Automation Trigger", "credits": addon_cost})
+
 
     return {
         "required_credits": total_credits,
