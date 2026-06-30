@@ -4,6 +4,8 @@ const { spawn } = require('child_process');
 const http = require('http');
 const fs = require('fs');
 
+const isWin = process.platform === 'win32';
+
 // ── Custom protocol for auth deep-link ────────────────────────────────────────
 // Must be called before app is ready.
 if (process.defaultApp) {
@@ -142,12 +144,14 @@ function checkBackendHealth() {
 function resolveBackendPaths() {
   if (app.isPackaged) {
     const backendDir = path.join(process.resourcesPath, 'backend');
-    const backendExe = path.join(backendDir, 'syncframe-backend');
+    const backendExe = path.join(backendDir, isWin ? 'syncframe-backend.exe' : 'syncframe-backend');
     return { backendExe, backendDir, isPackaged: true };
   } else {
     const projectRoot = path.join(__dirname, '..');
     const backendDir = path.join(projectRoot, 'backend');
-    const venvPython = path.join(backendDir, '.venv', 'bin', 'python');
+    const venvPython = isWin 
+      ? path.join(backendDir, '.venv', 'Scripts', 'python.exe')
+      : path.join(backendDir, '.venv', 'bin', 'python');
     return { backendExe: venvPython, backendDir, isPackaged: false };
   }
 }
@@ -202,7 +206,7 @@ async function startBackend() {
     const stat = fs.statSync(backendExe);
     const mode = (stat.mode & parseInt('777', 8)).toString(8);
     log(`Backend file permissions: ${mode} (octal), size: ${stat.size} bytes`);
-    if (isPackaged && !(stat.mode & 0o111)) {
+    if (!isWin && isPackaged && !(stat.mode & 0o111)) {
       log('WARNING: Backend file is not executable — attempting chmod...');
       fs.chmodSync(backendExe, 0o755);
       log('chmod 755 applied.');
@@ -383,7 +387,11 @@ app.on('will-quit', () => {
       // Add a fallback kill to avoid zombie processes (only killing on port 8000 since we own it)
       setTimeout(() => {
         const { exec } = require('child_process');
-        exec(`lsof -tiTCP:8000 -sTCP:LISTEN | xargs kill -9 2>/dev/null`, () => {});
+        if (isWin) {
+          exec(`for /f "tokens=5" %p in ('netstat -ano ^| findstr :8000') do @if not "%p"=="0" taskkill /PID %p /F 2>nul`, () => {});
+        } else {
+          exec(`lsof -tiTCP:8000 -sTCP:LISTEN | xargs kill -9 2>/dev/null`, () => {});
+        }
       }, 500);
     } catch (e) {
       log('Error stopping backend: ' + e.message);
