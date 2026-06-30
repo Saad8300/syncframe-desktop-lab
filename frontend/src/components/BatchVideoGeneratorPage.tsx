@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useAuth } from '../auth/AuthProvider'
 import StudioPageHeader from './StudioPageHeader'
 import {
   IconFilm, IconPlay, IconPause, IconSquare, IconTrash,
@@ -17,6 +18,7 @@ import {
 import { notifyBatchQueueCompleted, notifyBatchJobFailed } from '../utils/notifications'
 
 export default function BatchVideoGeneratorPage() {
+  const { requireAuth } = useAuth()
   const [jobs, setJobs] = useState<any[]>([])
   const [stats, setStats] = useState<any>({
     total: 0, queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0
@@ -111,6 +113,7 @@ export default function BatchVideoGeneratorPage() {
   const handleDuplicate = async (id: string) => { try { await duplicateBatchJob(id); loadData() } catch (err) { alert("Duplicate failed: " + err) } }
 
   const handleStartQueue = async () => {
+    if (!requireAuth()) return
     setIsQueueLoading(true)
     try { await startBatchQueue(); await loadData() } catch (e) { alert("Start failed: " + e) } 
     finally { setIsQueueLoading(false) }
@@ -135,6 +138,7 @@ export default function BatchVideoGeneratorPage() {
   }
 
   const handleRetrySingle = async (id: string) => {
+    if (!requireAuth()) return
     try { await retryBatchJob(id); await loadData() } catch (e) { alert("Retry failed: " + e) }
   }
 

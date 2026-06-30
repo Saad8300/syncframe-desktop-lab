@@ -1,5 +1,5 @@
 // frontend/src/auth/AuthProvider.tsx
-// Auth context providing Google login, logout, and session management via Supabase.
+// Auth context providing Google login, email/password login, logout, and session management via Supabase.
 
 import React, {
   createContext,
@@ -28,14 +28,24 @@ interface AuthContextValue {
   isAuthenticated: boolean
   authError: string | null
   isConfigured: boolean
+  
+  // Modal state
+  authModalOpen: boolean
+  setAuthModalOpen: (open: boolean) => void
+  
+  // Helpers
+  requireAuth: () => boolean
+
+  // Auth Methods
   signInWithGoogle: () => Promise<void>
+  signInWithPassword: (email: string, pass: string) => Promise<void>
+  signUp: (email: string, pass: string) => Promise<void>
   signOut: () => Promise<void>
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function isDesktopPackaged(): boolean {
-  // Injected by Electron when running as a packaged app
   return !!(window as any).syncframeDesktop?.isPackaged
 }
 
@@ -44,16 +54,10 @@ function isElectron(): boolean {
 }
 
 function getOAuthRedirectUrl(): string {
-  // Packaged desktop → use custom protocol so OS routes the callback back into the app
   if (isDesktopPackaged()) {
-    return (
-      import.meta.env.VITE_AUTH_REDIRECT_DESKTOP || 'syncframe://auth/callback'
-    )
+    return import.meta.env.VITE_AUTH_REDIRECT_DESKTOP || 'syncframe://auth/callback'
   }
-  // Electron dev mode or browser → use localhost callback
-  return (
-    import.meta.env.VITE_AUTH_REDIRECT_DEV || 'http://localhost:5173/auth/callback'
-  )
+  return import.meta.env.VITE_AUTH_REDIRECT_DEV || 'http://localhost:5173/auth/callback'
 }
 
 function mapSupabaseUser(user: User): AuthUser {
@@ -75,7 +79,12 @@ const AuthContext = createContext<AuthContextValue>({
   isAuthenticated: false,
   authError: null,
   isConfigured: false,
+  authModalOpen: false,
+  setAuthModalOpen: () => {},
+  requireAuth: () => false,
   signInWithGoogle: async () => {},
+  signInWithPassword: async () => {},
+  signUp: async () => {},
   signOut: async () => {},
 })
 
@@ -93,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
   const [authError, setAuthError] = useState<string | null>(null)
+  const [authModalOpen, setAuthModalOpen] = useState<boolean>(false)
 
   // ── Bootstrap: load existing session ────────────────────────────────────────
   useEffect(() => {
@@ -101,14 +111,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    // Get the current session from localStorage
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       setUser(session?.user ? mapSupabaseUser(session.user) : null)
       setLoading(false)
     })
 
-    // Subscribe to auth state changes (login, logout, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setSession(session)
@@ -129,16 +137,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (typeof desktop?.onAuthCallback === 'function') {
       desktop.onAuthCallback(async (callbackUrl: string) => {
         try {
-          // Extract the fragment or query params from the deep link URL
-          // e.g. syncframe://auth/callback#access_token=...
           const url = new URL(callbackUrl)
           const hashParams = new URLSearchParams(url.hash.replace('#', ''))
           const queryParams = new URLSearchParams(url.search)
 
-          const accessToken =
-            hashParams.get('access_token') || queryParams.get('access_token')
-          const refreshToken =
-            hashParams.get('refresh_token') || queryParams.get('refresh_token')
+          const accessToken = hashParams.get('access_token') || queryParams.get('access_token')
+          const refreshToken = hashParams.get('refresh_token') || queryParams.get('refresh_token')
 
           if (accessToken && refreshToken) {
             const { error } = await supabase!.auth.setSession({
@@ -146,6 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               refresh_token: refreshToken,
             })
             if (error) setAuthError(error.message)
+            else setAuthModalOpen(false) // Close modal on successful deep-link login
           }
         } catch (e: any) {
           setAuthError('Failed to process auth callback: ' + e.message)
@@ -155,6 +160,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [configured])
 
   // ── Actions ──────────────────────────────────────────────────────────────────
+
+  const isAuthenticated = devBypass || (session !== null && user !== null)
+
+  const requireAuth = useCallback(() => {
+    if (isAuthenticated) return true
+    setAuthModalOpen(true)
+    return false
+  }, [isAuthenticated])
 
   const signInWithGoogle = useCallback(async () => {
     if (!configured || !supabase) {
@@ -166,14 +179,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const redirectTo = getOAuthRedirectUrl()
 
       if (isDesktopPackaged()) {
-        // Packaged desktop: generate the OAuth URL, then open it in the system browser
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: { redirectTo, skipBrowserRedirect: true },
         })
         if (error) throw error
         if (data?.url) {
-          // Use Electron's shell.openExternal bridge exposed from preload
           const desktop = (window as any).syncframeDesktop
           if (typeof desktop?.openExternalUrl === 'function') {
             desktop.openExternalUrl(data.url)
@@ -182,7 +193,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
       } else {
-        // Browser / Electron dev mode: let Supabase handle the redirect normally
         const { error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: { redirectTo },
@@ -191,7 +201,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (e: any) {
       setAuthError(e.message || 'Google sign-in failed. Please try again.')
+      throw e
     }
+  }, [configured])
+
+  const signInWithPassword = useCallback(async (email: string, pass: string) => {
+    if (!configured || !supabase) {
+      throw new Error('Supabase auth is not configured.')
+    }
+    setAuthError(null)
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password: pass,
+    })
+    if (error) {
+      setAuthError(error.message)
+      throw error
+    }
+    setAuthModalOpen(false) // Close modal on success
+  }, [configured])
+
+  const signUp = useCallback(async (email: string, pass: string) => {
+    if (!configured || !supabase) {
+      throw new Error('Supabase auth is not configured.')
+    }
+    setAuthError(null)
+    const { error } = await supabase.auth.signUp({
+      email,
+      password: pass,
+    })
+    if (error) {
+      setAuthError(error.message)
+      throw error
+    }
+    // Typically signup might require email confirmation, 
+    // the UI component should check if session is null after signup to show a message.
   }, [configured])
 
   const signOut = useCallback(async () => {
@@ -208,9 +252,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  // ── Dev bypass (local dev only, never shipped) ─────────────────────────────
-  const isAuthenticated = devBypass || (session !== null && user !== null)
-
   return (
     <AuthContext.Provider
       value={{
@@ -220,7 +261,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated,
         authError,
         isConfigured: configured,
+        authModalOpen,
+        setAuthModalOpen,
+        requireAuth,
         signInWithGoogle,
+        signInWithPassword,
+        signUp,
         signOut,
       }}
     >

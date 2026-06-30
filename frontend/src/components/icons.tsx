@@ -193,6 +193,13 @@ export const IconSun = icon(
   </>,
 )
 
+export const IconBrandGoogle = icon(
+  <>
+    <path d="M17.788 5.108A9 9 0 1021 12h-8" />
+  </>,
+)
+
+
 /** Moon icon — used for dark mode indicator */
 export const IconMoon = icon(
   <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />,

@@ -51,7 +51,7 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
     try { return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true' } catch { return false }
   })
   const [sidebarItems, setSidebarItems] = useState<SidebarItemId[]>(() => loadSidebarItems())
-  const { user, isAuthenticated, signOut } = useAuth()
+  const { user, isAuthenticated, signOut, setAuthModalOpen } = useAuth()
 
   useEffect(() => {
     try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed)) } catch { /* noop */ }
@@ -175,8 +175,8 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
           {backendStatus}
         </div>
 
-        {/* ── User Profile Widget ── */}
-        {isAuthenticated && user && (
+        {/* ── User Profile / Login Widget ── */}
+        {isAuthenticated && user ? (
           <div
             className={`border-t px-2 py-2 ${collapsed ? 'flex justify-center' : ''}`}
             style={{ borderColor: 'var(--border-subtle)' }}
@@ -243,6 +243,23 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
                 </button>
               </div>
             )}
+          </div>
+        ) : (
+          <div
+            className={`border-t px-4 py-3 flex ${collapsed ? 'justify-center' : 'justify-start'}`}
+            style={{ borderColor: 'var(--border-subtle)' }}
+          >
+            <button
+              onClick={() => setAuthModalOpen(true)}
+              className="flex items-center gap-2 text-sm font-semibold text-cyan-400 hover:text-cyan-300 transition-colors"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+                <polyline points="10 17 15 12 10 7"/>
+                <line x1="15" y1="12" x2="3" y2="12"/>
+              </svg>
+              {!collapsed && <span>Login</span>}
+            </button>
           </div>
         )}
 

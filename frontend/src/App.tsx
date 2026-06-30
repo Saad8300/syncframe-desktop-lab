@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { useAuth } from './auth/AuthProvider'
-import LoginPage from './components/auth/LoginPage'
+import { AuthModal } from './components/auth/AuthModal'
 import AuthCallback from './auth/AuthCallback'
 import FileDropZone from './components/FileDropZone'
 import CsvGuide from './components/CsvGuide'
@@ -218,7 +218,7 @@ function SummaryChip({ label, value, active }: { label: string; value: string; a
 export type ViewMode = 'landing' | 'tools' | 'dashboard' | 'history' | 'templates' | 'settings' | 'tool:image' | 'tool:video' | 'tool:media' | 'tool:audio_merger' | 'tool:script_timestamp' | 'tool:batch_video' | 'batch_video'
 
 export default function App() {
-  const { isAuthenticated, loading: authLoading } = useAuth()
+  const { isAuthenticated, loading: authLoading, requireAuth } = useAuth()
 
   // ── Auth: callback route handler ────────────────────────────────────────────
   // In browser dev mode, Supabase redirects to /auth/callback — handle it here.
@@ -257,9 +257,8 @@ export default function App() {
   }
 
   // ── Auth: login gate ─────────────────────────────────────────────────────────
-  if (!isAuthenticated) {
-    return <LoginPage />
-  }
+  // We no longer hard-block the entire app on login.
+  // Instead, the AuthModal will appear when requireAuth() is called.
 
   const [appSettingsState, setAppSettingsState] = useState<AppSettings>(() => loadSettings())
   
@@ -423,6 +422,7 @@ export default function App() {
   };
 
   const handleGenerate = async () => {
+    if (!requireAuth()) return;
     if ((audioInputMode === 'single' ? !audioFile : !audioZip) || !imagesZip || !csvFile) return
     setStatus('uploading')
     try {
@@ -436,6 +436,7 @@ export default function App() {
   }
 
   const handleAddToQueue = async () => {
+    if (!requireAuth()) return;
     if ((audioInputMode === 'single' ? !audioFile : !audioZip) || !imagesZip || !csvFile) return
     setIsQueuing(true)
     setQueueSuccess(false)
@@ -491,6 +492,7 @@ export default function App() {
   return (
     <>
       <NotificationToastProvider />
+      <AuthModal />
       <StudioLayout
         activeTab={activeView}
         onNavigate={(v) => setActiveView(v as ViewMode)}
