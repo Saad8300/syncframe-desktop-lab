@@ -50,7 +50,14 @@ export function useCredits() {
 
         if (mounted) {
           if (data) {
-            setCredits(data as UserCredits)
+            const used = parseInt(localStorage.getItem('free_exports') || '0', 10);
+            const userCredits = data as UserCredits;
+            setCredits({
+              ...userCredits,
+              balance: Math.max(0, userCredits.balance - used),
+              lifetime_used: userCredits.lifetime_used + used,
+              free_video_exports_used: userCredits.free_video_exports_used + used
+            });
           } else {
             setCredits(getLocalCredits())
           }

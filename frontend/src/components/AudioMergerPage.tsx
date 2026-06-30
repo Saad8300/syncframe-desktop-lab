@@ -14,6 +14,8 @@ import {
 } from './icons'
 import { loadSettings } from '../utils/appSettings'
 import { consumePendingTemplate, saveTemplate } from '../utils/templateStore'
+import { estimateCredits, deductCredits } from '../lib/credits'
+import { resolveBackendUrl } from '../utils/api'
 
 interface AudioPart {
   id: string
@@ -29,7 +31,7 @@ interface MergeResponse {
 }
 
 export default function AudioMergerPage() {
-  const { requireAuth } = useAuth()
+  const { user, requireAuth } = useAuth()
   const [parts, setParts] = useState<AudioPart[]>([])
   const [outputFormat, setOutputFormat] = useState<'wav' | 'mp3'>('wav')
   const [outputName, setOutputName] = useState<string>(() => loadSettings().defaultAudioFilename)
@@ -145,8 +147,12 @@ export default function AudioMergerPage() {
       }
 
       const data = await res.json()
+      const estimatedCredits = await estimateCredits('audio_merger', { duration_seconds: data.duration || 60 })
+      const stableJobId = `audio_merge:${data.filename}:${data.duration || 0}:${Date.now()}`
+      await deductCredits(user?.id || "local", estimatedCredits, stableJobId)
+
       setResult({
-        url: `${API_BASE_URL}${data.url}`,
+        url: resolveBackendUrl(data.url || ''),
         filename: data.filename,
         duration: data.duration,
         parts_merged: data.parts_merged,
