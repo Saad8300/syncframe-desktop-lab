@@ -61,7 +61,14 @@ In Supabase → **Authentication → URL Configuration**:
 
 ---
 
-## Step 6: Create `frontend/.env.local`
+## Step 6: Set up Plans and Credits Schema
+
+Before running the application, make sure you configure the Supabase database schema for billing and plans.
+Please refer to [SUPABASE_PLANS_CREDITS_SETUP.md](./SUPABASE_PLANS_CREDITS_SETUP.md) for instructions.
+
+---
+
+## Step 7: Create `frontend/.env.local`
 
 In the project root, create the file `frontend/.env.local` (this file is gitignored — never commit it):
 
@@ -81,7 +88,7 @@ Find these values in Supabase → **Project Settings → API**:
 
 ---
 
-## Step 7: Run in Browser Dev Mode
+## Step 8: Run in Browser Dev Mode
 
 ```bash
 ./start_app.command
@@ -97,7 +104,7 @@ Click **Continue with Google** → complete Google sign-in → you should be red
 
 ---
 
-## Step 8: Run in Electron Desktop Dev Mode
+## Step 9: Run in Electron Desktop Dev Mode
 
 ```bash
 ./start_desktop.command
@@ -146,10 +153,11 @@ Click **Continue with Google** → complete Google sign-in → you should be red
 
 Backend API protection (JWT verification on endpoints) will be implemented in **Batch 21G**.  
 The placeholder file `backend/auth_helpers.py` documents the approach.
+Make sure to also complete the database schema setup as described in [SUPABASE_PLANS_CREDITS_SETUP.md](./SUPABASE_PLANS_CREDITS_SETUP.md).
 
 ---
 
-## Troubleshooting
+## Step 10: Troubleshooting
 
 **Login screen shows "Supabase auth is not configured"**
 → Check that `frontend/.env.local` exists and has valid values.

@@ -16,9 +16,15 @@ import {
   retryBatchJob, BatchState
 } from '../utils/api'
 import { notifyBatchQueueCompleted, notifyBatchJobFailed } from '../utils/notifications'
+import { usePlan } from '../hooks/usePlan'
+import { useCredits } from '../hooks/useCredits'
+import { AccessLimitModal } from './billing/AccessLimitModal'
+import { canUseTool } from '../lib/plans'
 
 export default function BatchVideoGeneratorPage() {
   const { requireAuth } = useAuth()
+  const { plan } = usePlan()
+  const { remaining } = useCredits()
   const [jobs, setJobs] = useState<any[]>([])
   const [stats, setStats] = useState<any>({
     total: 0, queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0
@@ -51,6 +57,11 @@ export default function BatchVideoGeneratorPage() {
   const [selectedJob, setSelectedJob] = useState<any | null>(null)
   
   const [confirmAction, setConfirmAction] = useState<{title: string, msg: string, action: () => void} | null>(null)
+  
+  // Access Limit Modal state
+  const [limitModalOpen, setLimitModalOpen] = useState(false)
+  const [limitModalReason, setLimitModalReason] = useState('')
+  const [limitModalRequiredPlan, setLimitModalRequiredPlan] = useState<string | undefined>(undefined)
 
   const loadData = async () => {
     try {
@@ -114,6 +125,15 @@ export default function BatchVideoGeneratorPage() {
 
   const handleStartQueue = async () => {
     if (!requireAuth()) return
+
+    const access = canUseTool(plan, remaining, 'batch_video', { is_batch: true })
+    if (!access.allowed) {
+      setLimitModalReason(access.reason)
+      setLimitModalRequiredPlan(access.requiredPlan)
+      setLimitModalOpen(true)
+      return
+    }
+
     setIsQueueLoading(true)
     try { await startBatchQueue(); await loadData() } catch (e) { alert("Start failed: " + e) } 
     finally { setIsQueueLoading(false) }
@@ -447,6 +467,16 @@ export default function BatchVideoGeneratorPage() {
           </div>
         </div>
       )}
+
+      {/* ── Access Limit Modal ── */}
+      <AccessLimitModal
+        isOpen={limitModalOpen}
+        onClose={() => setLimitModalOpen(false)}
+        reason={limitModalReason}
+        requiredPlan={limitModalRequiredPlan}
+        currentPlan={plan?.display_name || 'Free Trial'}
+        currentCredits={remaining}
+      />
 
       <style>{`
         .btn-control {

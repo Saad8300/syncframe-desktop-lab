@@ -9,6 +9,11 @@ import {
 } from './icons'
 import { loadSidebarItems, ALL_SIDEBAR_ITEMS, SidebarItemId } from '../utils/appSettings'
 import { useAuth } from '../auth/AuthProvider'
+import { PlanBadge } from './billing/PlanBadge'
+import { CreditsBadge } from './billing/CreditsBadge'
+import { AccessLimitModal } from './billing/AccessLimitModal'
+import { usePlan } from '../hooks/usePlan'
+import { useCredits } from '../hooks/useCredits'
 
 export type StudioTab = 'tools' | 'batch_video' | 'dashboard' | 'history' | 'templates' | 'settings' | 'help' | string
 
@@ -52,6 +57,9 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
   })
   const [sidebarItems, setSidebarItems] = useState<SidebarItemId[]>(() => loadSidebarItems())
   const { user, isAuthenticated, signOut, setAuthModalOpen } = useAuth()
+  const { plan } = usePlan()
+  const { remaining } = useCredits()
+  const [managePlanModalOpen, setManagePlanModalOpen] = useState(false)
 
   useEffect(() => {
     try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed)) } catch { /* noop */ }
@@ -226,6 +234,19 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
                       {user.email}
                     </div>
                   )}
+                  <div className="mt-1 flex flex-col gap-1 items-start">
+                    <PlanBadge />
+                    <CreditsBadge />
+                    <button
+                      onClick={() => setManagePlanModalOpen(true)}
+                      className="text-[10px] uppercase font-bold tracking-wider mt-1 transition-colors"
+                      style={{ color: 'var(--accent-primary)' }}
+                      onMouseEnter={e => e.currentTarget.style.color = '#fff'}
+                      onMouseLeave={e => e.currentTarget.style.color = 'var(--accent-primary)'}
+                    >
+                      Manage Plan
+                    </button>
+                  </div>
                 </div>
                 {/* Logout button */}
                 <button
@@ -287,6 +308,15 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
           {children}
         </div>
       </div>
+
+      {/* ── Manage Plan Modal ── */}
+      <AccessLimitModal
+        isOpen={managePlanModalOpen}
+        onClose={() => setManagePlanModalOpen(false)}
+        reason="Plan upgrades are managed securely on the SyncFrame Studio website."
+        currentPlan={plan?.display_name || 'Free Trial'}
+        currentCredits={remaining}
+      />
 
     </div>
   )

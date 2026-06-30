@@ -182,17 +182,28 @@ export default function ProgressOverlay({
     completedRef.current = false
     setPollError(null); setJobStatus(null); setShowConfirm(false); setCancelling(false)
 
+    let pollErrorCount = 0
+
     const poll = async () => {
       if (completedRef.current) return
       try {
         const status = await getJobStatus(jobId)
+        pollErrorCount = 0 // reset on success
         setJobStatus(status); setPollError(null)
         if (status.status === 'completed' || status.status === 'failed') {
           completedRef.current = true; stopPolling(); onJobComplete(status)
         } else if (status.status === 'cancelled') {
           completedRef.current = true; stopPolling(); onCancelled()
         }
-      } catch (err) { setPollError(String(err)) }
+      } catch (err) {
+        pollErrorCount++
+        if (pollErrorCount > 5) {
+          setPollError(String(err))
+        } else {
+          // Soft error: don't show to user yet, might be transient
+          console.warn(`Poll error (attempt ${pollErrorCount}):`, err)
+        }
+      }
     }
 
     poll()
@@ -413,7 +424,7 @@ export default function ProgressOverlay({
                   padding: '5px 10px', borderRadius: 8,
                   background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.18)',
                 }}>
-                  ⚠ Connection lost — retrying…
+                  ⚠ Rendering is still running, but the backend is slow. Retrying…
                 </div>
               )}
 

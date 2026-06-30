@@ -4,6 +4,8 @@
 import React, { useState } from 'react'
 import { BUILT_IN_PRESETS, detectActivePreset } from '../utils/presets'
 import { useSavedPresets } from '../hooks/useSavedPresets'
+import { usePlan } from '../hooks/usePlan'
+import { AccessLimitModal } from './billing/AccessLimitModal'
 import type { ExportPreset, PresetId } from '../utils/presets'
 import type { SavedPreset } from '../hooks/useSavedPresets'
 import type {
@@ -51,66 +53,18 @@ function Badge({ children, accent }: { children: React.ReactNode; accent?: boole
   )
 }
 
-// Single built-in preset card
-function PresetCard({
-  preset,
-  active,
-  onClick,
-  disabled,
-}: {
-  preset:   ExportPreset
-  active:   boolean
-  onClick:  () => void
-  disabled?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={preset.summary}
-      className="w-full text-left rounded-xl px-3 py-2.5 transition-all duration-150 flex items-center gap-2.5 group"
-      style={{
-        background: active ? 'rgba(99,102,241,0.12)' : 'var(--bg-elevated)',
-        border:     active ? '1px solid rgba(99,102,241,0.4)' : '1px solid var(--border-subtle)',
-        cursor:     disabled ? 'not-allowed' : 'pointer',
-        opacity:    disabled ? 0.5 : 1,
-      }}
-      onMouseEnter={e => {
-        if (!active && !disabled) {
-          e.currentTarget.style.border = '1px solid rgba(99,102,241,0.25)'
-          e.currentTarget.style.background = 'rgba(99,102,241,0.06)'
-        }
-      }}
-      onMouseLeave={e => {
-        if (!active && !disabled) {
-          e.currentTarget.style.border = '1px solid var(--border-subtle)'
-          e.currentTarget.style.background = 'var(--bg-elevated)'
-        }
-      }}
-    >
-      <span className="text-base leading-none shrink-0">{preset.icon}</span>
-      <div className="flex-1 min-w-0">
-        <p
-          className="text-xs font-semibold truncate"
-          style={{ color: active ? '#818cf8' : 'var(--text-primary)' }}
-        >
-          {preset.label}
-        </p>
-        <p className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
-          {preset.summary}
-        </p>
-      </div>
-      {active && (
-        <span
-          className="w-4 h-4 rounded-full shrink-0 flex items-center justify-center text-[9px] font-bold"
-          style={{ background: 'rgba(99,102,241,0.3)', color: '#818cf8' }}
-        >
-          ✓
-        </span>
-      )}
-    </button>
-  )
+const PLAN_TIERS: Record<string, number> = {
+  'Free Trial': 0,
+  'Standard': 1,
+  'Pro': 2,
+  'Ultra': 3,
+}
+
+function hasRequiredPlan(currentPlan: string, requiredPlan?: string) {
+  if (!requiredPlan) return true
+  const currentLevel = PLAN_TIERS[currentPlan] ?? 0
+  const requiredLevel = PLAN_TIERS[requiredPlan] ?? 0
+  return currentLevel >= requiredLevel
 }
 
 // Saved custom preset row
@@ -190,22 +144,29 @@ export default function ExportPresetPanel({
   const [showSaved,       setShowSaved]       = useState(false)
   const [newPresetName,   setNewPresetName]   = useState('')
   const [saveSuccess,     setSaveSuccess]     = useState(false)
+  const [dropdownOpen,    setDropdownOpen]    = useState(false)
+  
+  const { plan } = usePlan()
+  const currentPlanName = plan?.display_name || 'Free Trial'
 
-  function handleSelectChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const val = e.target.value
-    if (val === 'custom') return
-    
-    const preset = BUILT_IN_PRESETS.find(p => p.id === val)
-    if (preset) {
-      onApply({
-        aspectRatio:   preset.aspectRatio,
-        resolution:    preset.resolution,
-        renderProfile: preset.renderProfile,
-        motionEffect:  preset.motionEffect,
-        transition:    preset.transition,
-        visualEffect:  preset.visualEffect,
-      })
+  const [limitModalOpen, setLimitModalOpen] = useState(false)
+  const [limitRequiredPlan, setLimitRequiredPlan] = useState<string>('Pro')
+
+  function handleSelectChange(preset: ExportPreset) {
+    if (!hasRequiredPlan(currentPlanName, preset.requiredPlan)) {
+      setLimitRequiredPlan(preset.requiredPlan!)
+      setLimitModalOpen(true)
+      return
     }
+    setDropdownOpen(false)
+    onApply({
+      aspectRatio:   preset.aspectRatio,
+      resolution:    preset.resolution,
+      renderProfile: preset.renderProfile,
+      motionEffect:  preset.motionEffect,
+      transition:    preset.transition,
+      visualEffect:  preset.visualEffect,
+    })
   }
 
   function handleLoadSaved(p: SavedPreset) {
@@ -243,25 +204,89 @@ export default function ExportPresetPanel({
   return (
     <div className="space-y-3">
       {/* Header & Dropdown */}
-      <div>
+      <div className="relative">
         <label htmlFor={`${idPrefix}-select`} className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
           Export Preset
         </label>
-        <select
+        
+        {/* Custom Dropdown Trigger */}
+        <button
           id={`${idPrefix}-select`}
-          value={activeBuiltInId}
-          onChange={handleSelectChange}
+          type="button"
           disabled={disabled}
-          className="form-select w-full mt-1.5"
-          style={{ fontSize: '12px' }}
+          onClick={() => setDropdownOpen(!dropdownOpen)}
+          className="w-full mt-1.5 flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-left"
+          style={{
+            background: 'var(--bg-input)',
+            border: dropdownOpen ? '1px solid var(--accent-primary)' : '1px solid var(--border-default)',
+            color: 'var(--text-primary)',
+            opacity: disabled ? 0.6 : 1,
+            cursor: disabled ? 'not-allowed' : 'pointer'
+          }}
         >
-          <option value="custom" disabled hidden>Custom Settings</option>
-          {BUILT_IN_PRESETS.map(preset => (
-            <option key={preset.id} value={preset.id}>
-              {preset.icon} {preset.label}
-            </option>
-          ))}
-        </select>
+          <div className="flex items-center gap-2 truncate">
+            <span className="text-sm shrink-0">{activePreset ? activePreset.icon : '⚙️'}</span>
+            <div className="flex flex-col truncate">
+              <span className="text-xs font-semibold">{activePreset ? activePreset.label : 'Custom Settings'}</span>
+            </div>
+          </div>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: dropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', color: 'var(--text-muted)' }}>
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </button>
+
+        {/* Custom Dropdown Menu */}
+        {dropdownOpen && !disabled && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setDropdownOpen(false)} />
+            <div 
+              className="absolute z-50 w-full mt-1 rounded-xl shadow-2xl overflow-hidden animate-slide-up"
+              style={{
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-default)',
+                maxHeight: '300px',
+                overflowY: 'auto'
+              }}
+            >
+              {BUILT_IN_PRESETS.map(preset => {
+                const isLocked = !hasRequiredPlan(currentPlanName, preset.requiredPlan)
+                const isActive = activeBuiltInId === preset.id
+
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => handleSelectChange(preset)}
+                    className="w-full text-left px-3 py-2.5 flex items-center gap-2 transition-colors border-b last:border-b-0 hover:bg-black/10 dark:hover:bg-white/5"
+                    style={{ 
+                      borderColor: 'var(--border-subtle)',
+                      background: isActive ? 'rgba(99,102,241,0.1)' : 'transparent'
+                    }}
+                  >
+                    <span className="text-base shrink-0">{preset.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold truncate flex items-center gap-2" style={{ color: isActive ? 'var(--accent-primary)' : 'var(--text-primary)' }}>
+                        {preset.label}
+                        {isLocked && (
+                          <span className="text-[9px] font-bold px-1.5 py-[1px] rounded uppercase tracking-wider" style={{ background: 'var(--bg-input)', color: 'var(--text-muted)', border: '1px solid var(--border-subtle)' }}>
+                            {preset.requiredPlan}
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>{preset.summary}</p>
+                    </div>
+                    {isActive && (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-400 shrink-0">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </>
+        )}
+
         <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-muted)' }}>
           Quickly apply aspect ratio, resolution, and quality.
         </p>
@@ -342,6 +367,13 @@ export default function ExportPresetPanel({
           )}
         </div>
       )}
+
+      <AccessLimitModal
+        isOpen={limitModalOpen}
+        onClose={() => setLimitModalOpen(false)}
+        requiredPlan={limitRequiredPlan}
+        currentPlan={currentPlanName}
+      />
     </div>
   )
 }

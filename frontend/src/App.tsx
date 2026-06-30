@@ -25,6 +25,7 @@ import BatchVideoGeneratorPage from './components/BatchVideoGeneratorPage'
 import PreflightCheck, { buildPreflightChecks } from './components/PreflightCheck'
 import ExportPresetPanel from './components/ExportPresetPanel'
 import { TextOverlayPanel } from './components/TextOverlayPanel'
+import { AccessLimitModal } from './components/billing/AccessLimitModal'
 import NotificationToastProvider from './components/NotificationToastProvider'
 import { notifyBackendDisconnected, notifyBackendReconnected, notifyRenderCompleted, notifyRenderFailed } from './utils/notifications'
 import {
@@ -44,6 +45,9 @@ import type { GenerateSettings, GenerateResponse, GenerateStatus, JobStatus } fr
 import { checkHealth, startJob, createImageTimelineBatchJob } from './utils/api'
 import { loadSettings, applyThemeMode, applyAccentColor, saveSettings, AppSettings } from './utils/appSettings'
 import { consumePendingTemplate, saveTemplate } from './utils/templateStore'
+import { usePlan } from './hooks/usePlan'
+import { useCredits } from './hooks/useCredits'
+import { canUseTool } from './lib/plans'
 
 // ── Default settings ────────────────────────────────────────────────────────
 
@@ -219,46 +223,13 @@ export type ViewMode = 'landing' | 'tools' | 'dashboard' | 'history' | 'template
 
 export default function App() {
   const { isAuthenticated, loading: authLoading, requireAuth } = useAuth()
-
-  // ── Auth: callback route handler ────────────────────────────────────────────
-  // In browser dev mode, Supabase redirects to /auth/callback — handle it here.
-  const isAuthCallback =
-    typeof window !== 'undefined' &&
-    (window.location.pathname === '/auth/callback' ||
-      window.location.hash.includes('access_token') ||
-      window.location.search.includes('code='))
-
-  if (isAuthCallback) {
-    return <AuthCallback />
-  }
-
-  // ── Auth: loading state ──────────────────────────────────────────────────────
-  if (authLoading) {
-    return (
-      <div style={{
-        minHeight: '100vh', display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
-        background: '#080c14', color: '#f1f5f9',
-        fontFamily: "'Inter', system-ui, sans-serif", gap: '1.5rem',
-      }}>
-        <svg width="44" height="44" viewBox="0 0 24 24" fill="none">
-          <polygon points="13,2 4.5,13.5 11,13.5 11,22 19.5,10.5 13,10.5" fill="url(#loadGrad)" />
-          <defs>
-            <linearGradient id="loadGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#06b6d4" />
-              <stop offset="100%" stopColor="#6366f1" />
-            </linearGradient>
-          </defs>
-        </svg>
-        <div style={{ width: 36, height: 36, border: '3px solid rgba(99,102,241,0.25)', borderTop: '3px solid #6366f1', borderRadius: '50%', animation: 'appSpin 0.7s linear infinite' }} />
-        <style>{`@keyframes appSpin { to { transform: rotate(360deg); } }`}</style>
-      </div>
-    )
-  }
+  const { plan } = usePlan()
+  const { remaining } = useCredits()
 
   // ── Auth: login gate ─────────────────────────────────────────────────────────
   // We no longer hard-block the entire app on login.
   // Instead, the AuthModal will appear when requireAuth() is called.
+
 
   const [appSettingsState, setAppSettingsState] = useState<AppSettings>(() => loadSettings())
   
@@ -296,6 +267,11 @@ export default function App() {
   })
 
   const isTool = typeof activeView === 'string' && (activeView.startsWith('tool:') || activeView === 'batch_video')
+
+  // Access Limit Modal state
+  const [limitModalOpen, setLimitModalOpen] = useState(false)
+  const [limitModalReason, setLimitModalReason] = useState('')
+  const [limitModalRequiredPlan, setLimitModalRequiredPlan] = useState<string | undefined>(undefined)
 
   // Reset scroll position when navigating
   useEffect(() => {
@@ -424,6 +400,18 @@ export default function App() {
   const handleGenerate = async () => {
     if (!requireAuth()) return;
     if ((audioInputMode === 'single' ? !audioFile : !audioZip) || !imagesZip || !csvFile) return
+
+    const access = canUseTool(plan, remaining, 'video_export', {
+      resolution: settings.exportResolution,
+      is_premium_template: false
+    })
+    if (!access.allowed) {
+      setLimitModalReason(access.reason)
+      setLimitModalRequiredPlan(access.requiredPlan)
+      setLimitModalOpen(true)
+      return
+    }
+
     setStatus('uploading')
     try {
       const activeSettings = computeActiveSettings(settings);
@@ -438,6 +426,18 @@ export default function App() {
   const handleAddToQueue = async () => {
     if (!requireAuth()) return;
     if ((audioInputMode === 'single' ? !audioFile : !audioZip) || !imagesZip || !csvFile) return
+
+    const access = canUseTool(plan, remaining, 'batch_video', {
+      resolution: settings.exportResolution,
+      is_batch: true
+    })
+    if (!access.allowed) {
+      setLimitModalReason(access.reason)
+      setLimitModalRequiredPlan(access.requiredPlan)
+      setLimitModalOpen(true)
+      return
+    }
+
     setIsQueuing(true)
     setQueueSuccess(false)
     try {
@@ -484,6 +484,38 @@ export default function App() {
   }, [])
 
   // Derived
+  const isAuthCallback =
+    typeof window !== 'undefined' &&
+    (window.location.pathname === '/auth/callback' ||
+      window.location.hash.includes('access_token') ||
+      window.location.search.includes('code='))
+
+  if (isAuthCallback) {
+    return <AuthCallback />
+  }
+
+  if (authLoading) {
+    return (
+      <div style={{
+        minHeight: '100vh', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        background: '#080c14', color: '#f1f5f9',
+        fontFamily: "'Inter', system-ui, sans-serif", gap: '1.5rem',
+      }}>
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none">
+          <polygon points="13,2 4.5,13.5 11,13.5 11,22 19.5,10.5 13,10.5" fill="url(#loadGrad)" />
+          <defs>
+            <linearGradient id="loadGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#06b6d4" />
+              <stop offset="100%" stopColor="#6366f1" />
+            </linearGradient>
+          </defs>
+        </svg>
+        <div style={{ width: 36, height: 36, border: '3px solid rgba(99,102,241,0.25)', borderTop: '3px solid #6366f1', borderRadius: '50%', animation: 'appSpin 0.7s linear infinite' }} />
+        <style>{`@keyframes appSpin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    )
+  }
 
   if (activeView === 'landing') {
     return <LandingPage onEnterStudio={() => setActiveView('dashboard')} onViewTools={() => setActiveView('tools')} />
@@ -1076,7 +1108,17 @@ export default function App() {
         </main>
       )}
       </div>
-    </StudioLayout>
+      </StudioLayout>
+
+      {/* ── Access Limit Modal ── */}
+      <AccessLimitModal
+        isOpen={limitModalOpen}
+        onClose={() => setLimitModalOpen(false)}
+        reason={limitModalReason}
+        requiredPlan={limitModalRequiredPlan}
+        currentPlan={plan?.display_name || 'Free Trial'}
+        currentCredits={remaining}
+      />
     </>
   )
 }

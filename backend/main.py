@@ -51,6 +51,7 @@ import batch_queue_store
 import batch_queue_runner
 import notification_integration_store
 import notification_webhook_sender
+import credit_estimator
 from pydantic import BaseModel
 
 def make_clean_filename(raw_name: str, default_name: str, extension: str) -> str:
@@ -139,6 +140,9 @@ app = FastAPI(
     description="Generate perfectly timed videos from audio, ordered images, and timestamps.",
     version="1.3.0",
 )
+
+app.include_router(credit_estimator.plans_router, prefix="/api/plans")
+app.include_router(credit_estimator.credits_router, prefix="/api/credits")
 
 app.add_middleware(
     CORSMiddleware,
