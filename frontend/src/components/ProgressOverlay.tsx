@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { IconClock, IconXCircle, IconDownload, IconCheck, IconAlertTriangle, IconLoader } from './icons'
 import type { JobStatus, ExportResolution, RenderProfile } from '../types'
-import { getJobStatus, cancelJob } from '../utils/api'
+import { getJobStatus, cancelJob, resolveBackendUrl } from '../utils/api'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -466,7 +466,7 @@ export default function ProgressOverlay({
                   <div style={{ display: 'flex', gap: 8 }}>
                     {isComplete && jobStatus?.output_video_url && (
                       <a
-                        href={jobStatus.output_video_url}
+                        href={resolveBackendUrl(jobStatus.output_video_url)}
                         download={jobStatus.output_filename ?? 'video.mp4'}
                         onClick={() => { setTimeout(onClose!, 100) }}
                         style={{
