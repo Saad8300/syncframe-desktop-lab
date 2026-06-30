@@ -377,6 +377,11 @@ export default function ExportPresetPanel({
         requiredPlan={limitRequiredPlan}
         currentPlan={currentPlanName}
         reason={limitModalReason}
+        onFallbackAction={() => {
+          const fallbackPreset = BUILT_IN_PRESETS.find(p => p.id === 'fast_test');
+          if (fallbackPreset) handleSelectChange(fallbackPreset);
+        }}
+        fallbackActionLabel="Switch to 720p"
       />
     </div>
   )
