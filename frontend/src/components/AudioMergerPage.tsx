@@ -14,8 +14,13 @@ import {
 } from './icons'
 import { loadSettings } from '../utils/appSettings'
 import { consumePendingTemplate, saveTemplate } from '../utils/templateStore'
-import { estimateCredits, deductCredits } from '../lib/credits'
+
 import { resolveBackendUrl } from '../utils/api'
+import { estimateCredits, deductCredits, reserveCredits } from '../lib/credits'
+import { usePlan } from '../hooks/usePlan'
+import { useCredits } from '../hooks/useCredits'
+import { AccessLimitModal } from './billing/AccessLimitModal'
+import { canUseTool } from '../lib/plans'
 
 interface AudioPart {
   id: string
@@ -32,6 +37,11 @@ interface MergeResponse {
 
 export default function AudioMergerPage() {
   const { user, requireAuth } = useAuth()
+  const { plan } = usePlan()
+  const { remaining } = useCredits()
+  const [limitModalOpen, setLimitModalOpen] = useState(false)
+  const [limitModalReason, setLimitModalReason] = useState('')
+  const [limitModalRequiredPlan, setLimitModalRequiredPlan] = useState<string | undefined>(undefined)
   const [parts, setParts] = useState<AudioPart[]>([])
   const [outputFormat, setOutputFormat] = useState<'wav' | 'mp3'>('wav')
   const [outputName, setOutputName] = useState<string>(() => loadSettings().defaultAudioFilename)
@@ -119,7 +129,17 @@ export default function AudioMergerPage() {
       setErrorMsg('Add at least 2 audio parts to merge.')
       return
     }
-    
+    const estimatedCredits = await estimateCredits('audio_merger', { duration_seconds: 60 })
+    const access = canUseTool(plan, remaining, 'audio_merger', {}, estimatedCredits)
+    if (!access.allowed) {
+      setLimitModalReason(access.reason)
+      setLimitModalRequiredPlan(access.requiredPlan)
+      setLimitModalOpen(true)
+      return
+    }
+    if (user) {
+      await reserveCredits(user.id, estimatedCredits)
+    }
     setStatus('merging')
     setErrorMsg('')
     setResult(null)
@@ -421,6 +441,17 @@ export default function AudioMergerPage() {
         </div>
         
       </div>
-    </main>
+    
+      {/* Access Limit Modal */}
+      <AccessLimitModal
+        isOpen={limitModalOpen}
+        onClose={() => setLimitModalOpen(false)}
+        reason={limitModalReason}
+        requiredPlan={limitModalRequiredPlan}
+        currentPlan={plan?.display_name || 'Free Trial'}
+        currentCredits={remaining}
+      />
+
+      </main>
   )
 }

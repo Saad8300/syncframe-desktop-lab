@@ -24,9 +24,14 @@ import type {
   JobStatus,
   GenerateResponse,
 } from '../types'
-import { startMediaTimelineJob, createMediaTimelineBatchJob , resolveBackendUrl} from '../utils/api'
+import { startMediaTimelineJob, createMediaTimelineBatchJob, resolveBackendUrl } from '../utils/api'
 import { loadSettings } from '../utils/appSettings'
 import { consumePendingTemplate, saveTemplate } from '../utils/templateStore'
+import { usePlan } from '../hooks/usePlan'
+import { useCredits } from '../hooks/useCredits'
+import { AccessLimitModal } from './billing/AccessLimitModal'
+import { estimateCredits, reserveCredits } from '../lib/credits'
+import { canUseTool } from '../lib/plans'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -304,7 +309,12 @@ function MediaTimelineResult({
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
 export default function MediaTimelinePage() {
-  const { requireAuth } = useAuth()
+  const { requireAuth, user } = useAuth()
+  const { plan } = usePlan()
+  const { remaining } = useCredits()
+  const [limitModalOpen, setLimitModalOpen] = useState(false)
+  const [limitModalReason, setLimitModalReason] = useState('')
+  const [limitModalRequiredPlan, setLimitModalRequiredPlan] = useState<string | undefined>(undefined)
   const [audioInputMode, setAudioInputMode] = useState<'single' | 'zip'>('single')
   const [audioFile, setAudioFile] = useState<File | null>(null)
   const [audioZip,  setAudioZip]  = useState<File | null>(null)
@@ -402,6 +412,17 @@ export default function MediaTimelinePage() {
   const handleGenerate = async () => {
     if (!requireAuth()) return
     if (!isReady) return
+    const estimatedCredits = await estimateCredits('media_timeline', { duration_seconds: 60, resolution: settings.exportResolution })
+    const access = canUseTool(plan, remaining, 'media_timeline', {}, estimatedCredits)
+    if (!access.allowed) {
+      setLimitModalReason(access.reason)
+      setLimitModalRequiredPlan(access.requiredPlan)
+      setLimitModalOpen(true)
+      return
+    }
+    if (user) {
+      await reserveCredits(user.id, estimatedCredits)
+    }
     setStatus('uploading')
     setErrorMsg(null)
     setResult(null)
@@ -829,7 +850,6 @@ export default function MediaTimelinePage() {
             onChange={(updates) => setSettings(s => ({ ...s, ...updates }))}
           />
 
-
           {/* Error display */}
           {errorMsg && (
             <div className="alert-error animate-fade-in">
@@ -1009,6 +1029,17 @@ export default function MediaTimelinePage() {
           renderSpec={{ resolution: settings.exportResolution, renderProfile: settings.renderProfile }}
         />
       )}
-    </main>
+    
+      {/* Access Limit Modal */}
+      <AccessLimitModal
+        isOpen={limitModalOpen}
+        onClose={() => setLimitModalOpen(false)}
+        reason={limitModalReason}
+        requiredPlan={limitModalRequiredPlan}
+        currentPlan={plan?.display_name || 'Free Trial'}
+        currentCredits={remaining}
+      />
+
+      </main>
   )
 }

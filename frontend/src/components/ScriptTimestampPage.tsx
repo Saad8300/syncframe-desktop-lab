@@ -16,6 +16,11 @@ import StudioPageHeader from './StudioPageHeader'
 import { API_BASE_URL, apiUrl } from '../utils/api'
 import { loadSettings } from '../utils/appSettings'
 import { consumePendingTemplate, saveTemplate } from '../utils/templateStore'
+import { usePlan } from '../hooks/usePlan'
+import { useCredits } from '../hooks/useCredits'
+import { AccessLimitModal } from './billing/AccessLimitModal'
+import { estimateCredits, reserveCredits } from '../lib/credits'
+import { canUseTool } from '../lib/plans'
 
 function IconMic({ size = 24, style }: { size?: number; style?: React.CSSProperties }) {
   return (
@@ -132,7 +137,12 @@ function buildImageTimelineCsv(segments: { start: number; end: number; text: str
 }
 
 export default function ScriptTimestampPage() {
-  const { requireAuth } = useAuth()
+  const { requireAuth, user } = useAuth()
+  const { plan } = usePlan()
+  const { remaining } = useCredits()
+  const [limitModalOpen, setLimitModalOpen] = useState(false)
+  const [limitModalReason, setLimitModalReason] = useState('')
+  const [limitModalRequiredPlan, setLimitModalRequiredPlan] = useState<string | undefined>(undefined)
   const [audioFile, setAudioFile]   = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
@@ -195,6 +205,17 @@ export default function ScriptTimestampPage() {
     if (!audioFile) {
       setErrorMsg('Please upload an audio file.')
       return
+    }
+    const estimatedCredits = await estimateCredits('script_timestamp', { duration_seconds: 60, resolution: "1080p" })
+    const access = canUseTool(plan, remaining, 'script_timestamp', {}, estimatedCredits)
+    if (!access.allowed) {
+      setLimitModalReason(access.reason)
+      setLimitModalRequiredPlan(access.requiredPlan)
+      setLimitModalOpen(true)
+      return
+    }
+    if (user) {
+      await reserveCredits(user.id, estimatedCredits)
     }
     setStatus('transcribing')
     setErrorMsg('')
@@ -763,6 +784,17 @@ export default function ScriptTimestampPage() {
           </div>
         </div>
       </div>
-    </main>
+    
+      {/* Access Limit Modal */}
+      <AccessLimitModal
+        isOpen={limitModalOpen}
+        onClose={() => setLimitModalOpen(false)}
+        reason={limitModalReason}
+        requiredPlan={limitModalRequiredPlan}
+        currentPlan={plan?.display_name || 'Free Trial'}
+        currentCredits={remaining}
+      />
+
+      </main>
   )
 }
