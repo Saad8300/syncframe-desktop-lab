@@ -250,6 +250,8 @@ export default function App() {
     applyThemeMode(newMode)
   }
 
+  const isWindows = typeof navigator !== 'undefined' && navigator.userAgent.includes('Windows')
+
   // Derive isDark for legacy prop passing to StudioLayout
   const isDark = appSettingsState.themeMode === 'dark' || (appSettingsState.themeMode === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
 
@@ -624,7 +626,7 @@ export default function App() {
             <div className="text-xs">
               <p className="font-semibold">Backend server is not running</p>
               <p className="mt-0.5 opacity-80">
-                Start the app with <strong>./start_app.command</strong> or run the backend manually.
+                Start the app with <strong>{isWindows ? 'start_windows.bat' : 'start_app.command'}</strong> or run the backend manually.
               </p>
             </div>
           </div>

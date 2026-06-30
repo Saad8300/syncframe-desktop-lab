@@ -136,6 +136,8 @@ function Step({ n, children }: { n: number; children: React.ReactNode }) {
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function StudioHelpPage() {
+  const isWindows = typeof navigator !== 'undefined' && navigator.userAgent.includes('Windows')
+
   return (
     <div className="w-full px-5 sm:px-8 py-8 space-y-6 animate-fade-in" style={{ maxWidth: 1000 }}>
 
@@ -313,8 +315,12 @@ export default function StudioHelpPage() {
             </div>
             <ul className="space-y-2 text-xs">
               <li className="flex gap-2"><span style={{ color: '#6366f1' }}>›</span> The <strong>backend server</strong> must be running before you can generate. Check the green status in the sidebar.</li>
-              <li className="flex gap-2"><span style={{ color: '#6366f1' }}>›</span> Mac: Start with <Code>start_app.command</Code> · Stop with <Code>stop_app.command</Code></li>
-              <li className="flex gap-2"><span style={{ color: '#6366f1' }}>›</span> Windows: Start with <Code>start_windows.bat</Code> · Stop with <Code>stop_windows.bat</Code></li>
+              <li className="flex gap-2">
+                <span style={{ color: '#6366f1' }}>›</span> 
+                {isWindows 
+                  ? <>Start with <Code>start_windows.bat</Code> · Stop with <Code>stop_windows.bat</Code></>
+                  : <>Start with <Code>start_app.command</Code> · Stop with <Code>stop_app.command</Code></>}
+              </li>
               <li className="flex gap-2"><span style={{ color: '#6366f1' }}>›</span> Generated files are saved to <Code>backend/outputs/</Code> on your machine.</li>
               <li className="flex gap-2"><span style={{ color: '#6366f1' }}>›</span> History, templates, and settings are stored locally in your browser's localStorage.</li>
             </ul>
@@ -327,11 +333,11 @@ export default function StudioHelpPage() {
             {[
               {
                 problem: 'Backend offline (red status indicator)',
-                fix: <>Restart the backend: double-click <Code>start_app.command</Code> (Mac) or run <Code>start_windows.bat</Code> (Windows). Then refresh the page.</>,
+                fix: <>Restart the backend: double-click <Code>{isWindows ? 'start_windows.bat' : 'start_app.command'}</Code>. Then refresh the page.</>,
               },
               {
                 problem: 'FFmpeg not found error',
-                fix: <>Install FFmpeg: <Code>brew install ffmpeg</Code> on Mac, or run <Code>install_windows.bat</Code> on Windows.</>,
+                fix: <>Install FFmpeg: {isWindows ? <>run <Code>install_windows.bat</Code> or install manually</> : <><Code>brew install ffmpeg</Code></>}.</>,
               },
               {
                 problem: 'Python or Node.js not found',
@@ -339,7 +345,9 @@ export default function StudioHelpPage() {
               },
               {
                 problem: 'Port already in use',
-                fix: <>Run <Code>stop_app.command</Code> to kill existing processes, then start again. Or manually: <Code>lsof -i :8000</Code> then <Code>kill &lt;PID&gt;</Code></>,
+                fix: isWindows 
+                  ? <>Run <Code>stop_windows.bat</Code> to kill existing processes, then start again. Or manually: <Code>netstat -ano | findstr :8000</Code> then <Code>taskkill /PID &lt;PID&gt; /F</Code></>
+                  : <>Run <Code>stop_app.command</Code> to kill existing processes, then start again. Or manually: <Code>lsof -i :8000</Code> then <Code>kill &lt;PID&gt;</Code></>,
               },
               {
                 problem: 'ZIP extraction fails',
