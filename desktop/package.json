@@ -8,7 +8,9 @@
     "dev": "electron .",
     "build:frontend": "cd ../frontend && npm run build",
     "build:mac": "npm run build:frontend && electron-builder --mac",
+    "build:win": "npm run build:frontend && electron-builder --win",
     "build:dir": "npm run build:frontend && electron-builder --dir",
+    "build:dir:win": "npm run build:frontend && electron-builder --win --dir",
     "pack": "npm run build:frontend && electron-builder"
   },
   "build": {
@@ -49,6 +51,29 @@
     "dmg": {
       "title": "SyncFrame Studio",
       "icon": "assets/icon.png"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "icon": "assets/icon.png",
+      "protocols": [
+        {
+          "name": "SyncFrame Studio Auth",
+          "schemes": [
+            "syncframe"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     }
   },
   "devDependencies": {
