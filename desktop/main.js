@@ -66,7 +66,16 @@ function initLog() {
 // Window
 // ──────────────────────────────────────────────────────────────────────────────
 
+let startupStages = [];
+function recordStartupStage(name) {
+  const timeMs = Date.now() - startupStartTime;
+  const msg = `[Startup] ${name}: ${timeMs}ms`;
+  log(msg);
+  startupStages.push(msg);
+}
+
 function createWindow() {
+  recordStartupStage('Electron window created');
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -133,20 +142,21 @@ function createWindow() {
       width: 72px;
       height: 72px;
       border-radius: 20px;
-      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
       display: flex;
       align-items: center;
       justify-content: center;
       margin-bottom: 24px;
-      box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.4), inset 0 2px 4px rgba(255,255,255,0.3);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6), inset 0 2px 4px rgba(255,255,255,0.05);
       position: relative;
+      border: 1px solid rgba(255,255,255,0.08);
     }
     .logo-container::after {
       content: '';
       position: absolute;
       inset: -4px;
       border-radius: 24px;
-      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      background: rgba(0, 229, 255, 0.2);
       filter: blur(12px);
       opacity: 0.5;
       z-index: -1;
@@ -212,9 +222,8 @@ function createWindow() {
   <div class="glow"></div>
   <div class="panel">
     <div class="logo-container">
-      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));">
-        <rect x="4" y="4" width="12" height="12" rx="3" stroke="white" stroke-width="2.5" />
-        <rect x="8" y="8" width="12" height="12" rx="3" stroke="white" stroke-width="2.5" opacity="0.6"/>
+      <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="#00e5ff" style="filter: drop-shadow(0 0 10px rgba(0,229,255,0.6));">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
       </svg>
     </div>
     <h1>SyncFrame Studio</h1>
@@ -228,6 +237,7 @@ function createWindow() {
 </html>
   `;
   mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(loadingHTML)}`);
+  recordStartupStage('loadingHTML shown');
 }
 
 function updateLoadingStatus(message) {
@@ -375,6 +385,8 @@ function resolveBackendPaths() {
   }
 }
 
+const startupStartTime = Date.now();
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Start Backend
 // ──────────────────────────────────────────────────────────────────────────────
@@ -461,7 +473,9 @@ async function startBackend() {
   log(`Spawn cwd: ${spawnOpts.cwd}`);
 
   try {
+    recordStartupStage('backend process spawn started');
     backendProcess = spawn(spawnCmd, spawnArgs, spawnOpts);
+    recordStartupStage('backend process spawned');
   } catch (spawnErr) {
     showError(
       `Failed to spawn backend process: ${spawnErr.message}`,
@@ -510,20 +524,23 @@ async function startBackend() {
   //  We wait generously.
   const maxAttempts = 120;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    await new Promise(r => setTimeout(r, 1000));
+    const delay = attempt <= 30 ? 300 : 1000;
+    await new Promise(r => setTimeout(r, delay));
 
     log(`Health check attempt ${attempt}/${maxAttempts}...`);
+    if (attempt === 1) recordStartupStage('first health check started');
 
     // Give the user a helpful message if it's taking long
     if (attempt <= 30) {
-      updateLoadingStatus(`Loading local rendering tools... (${attempt}s)`);
+      updateLoadingStatus(`Loading local rendering tools...`);
     } else {
       updateLoadingStatus(`Finalizing startup... (${attempt}s — please wait)`);
     }
 
     const healthy = await checkBackendHealth();
     if (healthy) {
-      log(`Backend healthy after ${attempt}s.`);
+      log(`Backend healthy after attempt ${attempt}.`);
+      recordStartupStage('health check succeeded');
       return true;
     }
   }
@@ -585,6 +602,12 @@ app.whenReady().then(async () => {
     } else {
       mainWindow.loadURL('http://localhost:5173');
     }
+    
+    mainWindow.webContents.once('did-finish-load', () => {
+      recordStartupStage('frontend loaded');
+      log('--- Startup Telemetry ---');
+      startupStages.forEach(s => log(s));
+    });
   }
 
   app.on('activate', () => {
