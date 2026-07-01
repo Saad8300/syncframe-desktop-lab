@@ -185,11 +185,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })
         if (error) throw error
         if (data?.url) {
-          const desktop = (window as any).syncframeDesktop
-          if (typeof desktop?.openExternalUrl === 'function') {
-            desktop.openExternalUrl(data.url)
-          } else {
-            window.open(data.url, '_blank')
+          try {
+            const desktop = (window as any).syncframeDesktop
+            if (desktop && typeof desktop.openExternalUrl === 'function') {
+              desktop.openExternalUrl(data.url)
+            } else {
+              window.open(data.url, '_blank', 'noopener,noreferrer')
+            }
+          } catch (err) {
+            console.error('Failed to open external browser:', err)
+            throw new Error('Could not open Google sign-in. Please try again.')
           }
         }
       } else {
@@ -200,7 +205,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error) throw error
       }
     } catch (e: any) {
-      setAuthError(e.message || 'Google sign-in failed. Please try again.')
+      let msg = e.message || 'Google sign-in failed. Please try again.'
+      if (msg.includes("Cannot read properties of undefined (reading 'openExternal')")) {
+        msg = 'Could not open Google sign-in. Please try again.'
+      }
+      setAuthError(msg)
       throw e
     }
   }, [configured])

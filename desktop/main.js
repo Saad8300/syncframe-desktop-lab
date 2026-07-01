@@ -563,6 +563,14 @@ ipcMain.on('is-packaged', (event) => {
   event.returnValue = app.isPackaged;
 });
 
+ipcMain.on('open-external', (event, url) => {
+  if (typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'))) {
+    shell.openExternal(url);
+  } else {
+    log('Blocked openExternal with invalid or missing URL scheme: ' + url);
+  }
+});
+
 // ── Auth deep-link handler ────────────────────────────────────────────────────
 function handleAuthDeepLink(url) {
   if (!url || !url.startsWith('syncframe://')) return;

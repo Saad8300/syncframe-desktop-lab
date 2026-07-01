@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer, shell } = require('electron');
+const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('syncframeDesktop', {
   // ── Auth bridge ──────────────────────────────────────────────────────────────
@@ -9,7 +9,7 @@ contextBridge.exposeInMainWorld('syncframeDesktop', {
 
   // Called by AuthProvider to open the Google OAuth URL in the system browser.
   openExternalUrl: (url) => {
-    shell.openExternal(url);
+    ipcRenderer.send('open-external', url);
   },
 
   // Tells AuthProvider whether we are running in a packaged build.
