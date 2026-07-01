@@ -19,12 +19,17 @@ export function useCredits() {
         return {
           user_id: user?.id || 'local',
           balance: Math.max(0, 30 - used),
-          monthly_allocation: 0,
+          monthly_allocation: 30,
           lifetime_used: used,
           period_start: new Date().toISOString(),
-          free_video_exports_used: used
+          free_video_exports_used: used,
+          
+          plan_id: 'free',
+          subscription_status: 'active',
+          monthly_credit_limit: 30,
+          credits_used_this_period: used
         };
-      }
+      };
 
       if (!isAuthenticated || !user || !isConfigured || !supabase) {
         if (mounted) {
@@ -50,13 +55,59 @@ export function useCredits() {
 
         if (mounted) {
           if (data) {
-            const used = parseInt(localStorage.getItem('free_exports') || '0', 10);
+            const localUsed = parseInt(localStorage.getItem('free_exports') || '0', 10);
             const userCredits = data as UserCredits;
+            
+            let available = 0;
+            let monthlyLimit = 30;
+            let finalUsedThisPeriod = localUsed;
+            
+            // Client-side expiry simulation (Backend MUST enforce this in production)
+            let isExpired = false;
+            let isInactive = false;
+            if (userCredits.billing_period_end && Date.now() > new Date(userCredits.billing_period_end).getTime()) {
+                isExpired = true;
+                if (userCredits.subscription_status !== 'active') {
+                    isInactive = true;
+                }
+            }
+
+            // Check if backend supports new monthly fields
+            const hasMonthlyFields = 'monthly_credit_limit' in userCredits || 'credits_used_this_period' in userCredits;
+
+            if (hasMonthlyFields) {
+              monthlyLimit = userCredits.monthly_credit_limit ?? userCredits.monthly_allocation ?? userCredits.balance ?? 30;
+              let backendUsedThisPeriod = userCredits.credits_used_this_period ?? 0;
+              
+              if (isExpired) {
+                  if (isInactive) {
+                      monthlyLimit = 0;
+                      backendUsedThisPeriod = 0;
+                  } else {
+                      // locally simulate reset until backend catches up
+                      backendUsedThisPeriod = 0;
+                  }
+              }
+              
+              available = Math.max(0, monthlyLimit - backendUsedThisPeriod - localUsed);
+              finalUsedThisPeriod = backendUsedThisPeriod + localUsed;
+            } else {
+              // Legacy fallback
+              monthlyLimit = userCredits.monthly_allocation ?? userCredits.balance ?? 30;
+              available = Math.max(0, (userCredits.balance ?? 30) - localUsed);
+              
+              if (isExpired && isInactive) {
+                  available = 0;
+              }
+            }
+
             setCredits({
               ...userCredits,
-              balance: Math.max(0, userCredits.balance - used),
-              lifetime_used: userCredits.lifetime_used + used,
-              free_video_exports_used: userCredits.free_video_exports_used + used
+              balance: available,
+              monthly_credit_limit: monthlyLimit,
+              credits_used_this_period: finalUsedThisPeriod,
+              lifetime_used: userCredits.lifetime_used + localUsed,
+              free_video_exports_used: userCredits.free_video_exports_used + localUsed
             });
           } else {
             setCredits(getLocalCredits())

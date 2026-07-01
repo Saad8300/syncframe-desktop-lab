@@ -152,15 +152,6 @@ function createWindow() {
       z-index: -1;
       animation: pulseGlow 3s ease-in-out infinite alternate;
     }
-    .logo-mark {
-      width: 0;
-      height: 0;
-      border-top: 14px solid transparent;
-      border-bottom: 14px solid transparent;
-      border-left: 22px solid #ffffff;
-      margin-left: 6px;
-      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
-    }
     h1 {
       margin: 0 0 8px 0;
       font-size: 28px;
@@ -183,14 +174,27 @@ function createWindow() {
       flex-direction: column;
       align-items: center;
     }
-    .spinner {
-      width: 24px;
-      height: 24px;
-      border: 3px solid rgba(99, 102, 241, 0.2);
-      border-top-color: #8b5cf6;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
+    .progress-bar-container {
+      width: 200px;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 4px;
       margin-bottom: 16px;
+      overflow: hidden;
+      position: relative;
+    }
+    .progress-bar {
+      position: absolute;
+      top: 0; left: 0; height: 100%;
+      width: 50%;
+      background: linear-gradient(90deg, #6366f1, #06b6d4, #8b5cf6, #6366f1);
+      background-size: 200% 100%;
+      border-radius: 4px;
+      animation: indeterminate 1.5s infinite linear;
+    }
+    @keyframes indeterminate {
+      0% { left: -50%; background-position: 100% 0; }
+      100% { left: 100%; background-position: -100% 0; }
     }
     #status {
       color: #cbd5e1;
@@ -200,7 +204,6 @@ function createWindow() {
       text-align: center;
       transition: opacity 0.3s ease;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
     @keyframes slideUp { to { opacity: 1; transform: translateY(0); } }
     @keyframes pulseGlow { from { opacity: 0.3; transform: scale(0.95); } to { opacity: 0.6; transform: scale(1.05); } }
   </style>
@@ -209,13 +212,16 @@ function createWindow() {
   <div class="glow"></div>
   <div class="panel">
     <div class="logo-container">
-      <div class="logo-mark"></div>
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));">
+        <rect x="4" y="4" width="12" height="12" rx="3" stroke="white" stroke-width="2.5" />
+        <rect x="8" y="8" width="12" height="12" rx="3" stroke="white" stroke-width="2.5" opacity="0.6"/>
+      </svg>
     </div>
     <h1>SyncFrame Studio</h1>
-    <p class="subtitle">Initializing local rendering environment</p>
+    <p class="subtitle">Preparing your studio workspace</p>
     <div class="loader-container">
-      <div class="spinner"></div>
-      <p id="status">Preparing backend engine and studio services...</p>
+      <div class="progress-bar-container"><div class="progress-bar"></div></div>
+      <p id="status">Loading local rendering tools...</p>
     </div>
   </div>
 </body>
@@ -500,8 +506,8 @@ async function startBackend() {
   });
 
   // ── 5. Health check polling — 120 second timeout ────────────────────────────
-  //  On first launch, macOS Gatekeeper validates the PyInstaller binary which
-  //  can take 60-90 seconds.  We wait generously.
+  //  Initial startup can take longer while the packaged runtime is prepared.
+  //  We wait generously.
   const maxAttempts = 120;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     await new Promise(r => setTimeout(r, 1000));
@@ -510,9 +516,9 @@ async function startBackend() {
 
     // Give the user a helpful message if it's taking long
     if (attempt <= 30) {
-      updateLoadingStatus(`Preparing local render engine... (${attempt}s)`);
+      updateLoadingStatus(`Loading local rendering tools... (${attempt}s)`);
     } else {
-      updateLoadingStatus(`First launch: macOS is verifying the backend engine... (${attempt}s — please wait)`);
+      updateLoadingStatus(`Finalizing startup... (${attempt}s — please wait)`);
     }
 
     const healthy = await checkBackendHealth();

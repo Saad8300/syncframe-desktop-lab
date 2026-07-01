@@ -6,6 +6,16 @@ export interface UserCredits {
   period_start: string
   period_end?: string
   free_video_exports_used: number
+
+  // ── Monthly Billing Fields (Backend Enforcement Pending) ──
+  plan_id?: string
+  subscription_status?: string
+  monthly_credit_limit?: number
+  credits_used_this_period?: number
+  billing_period_start?: string
+  billing_period_end?: string
+  last_credit_reset_at?: string
+  next_credit_reset_at?: string
 }
 
 export interface CreditEstimateResponse {
@@ -58,6 +68,8 @@ export async function deductCredits(userId: string, amount: number, jobId?: stri
   }
   console.log(`[Credits] Deducting ${amount} credits for user ${userId}`)
   // TODO: Implement actual backend deduction
+  // IMPORTANT: Monthly expiry and paid credit resets must be enforced via secure backend cron job or Stripe webhooks.
+  // This frontend deduction is currently serving as a local/demo fallback.
   
   // Local Free Trial tracking
   const count = parseInt(localStorage.getItem('free_exports') || '0', 10)
