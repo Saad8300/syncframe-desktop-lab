@@ -48,7 +48,7 @@ import { consumePendingTemplate, saveTemplate } from './utils/templateStore'
 import { usePlan } from './hooks/usePlan'
 import { useCredits } from './hooks/useCredits'
 import { canUseTool, Plan } from './lib/plans'
-import { estimateCredits, reserveCredits, deductCredits, refundCredits } from './lib/credits'
+import { estimateCredits, reserveCredits, finalizeJob } from './lib/credits'
 import type { ToolAccessResult } from './lib/plans'
 
 // ── Default settings ────────────────────────────────────────────────────────
@@ -341,6 +341,7 @@ export default function App() {
   // Generation state
   const [status,          setStatus]          = useState<GenerateStatus>('idle')
   const [currentJobId,    setCurrentJobId]    = useState<string | null>(null)
+  const [activeClientJobId, setActiveClientJobId] = useState<string | null>(null)
   const [result,          setResult]          = useState<GenerateResponse | null>(null)
   const [healthOk,        setHealthOk]        = useState<boolean | null>(null)
   const [cancelledMsg,    setCancelledMsg]    = useState<string | null>(null)
@@ -405,16 +406,18 @@ export default function App() {
     if (!requireAuth()) return;
     if ((audioInputMode === 'single' ? !audioFile : !audioZip) || !imagesZip || !csvFile) return
 
+    const durationSeconds = audioDuration || 60
+
     const estimatedCredits = await estimateCredits('video_export', {
       resolution: settings.exportResolution,
       is_premium_template: false,
-      duration_seconds: audioDuration || 60
+      duration_seconds: durationSeconds
     })
 
     const access = canUseTool(plan, remaining, 'video_export', {
       resolution: settings.exportResolution,
       is_premium_template: false,
-      duration_seconds: audioDuration || 60
+      duration_seconds: durationSeconds
     }, estimatedCredits)
 
     if (!access.allowed) {
@@ -424,8 +427,23 @@ export default function App() {
       return
     }
 
+    const cjid = crypto.randomUUID()
+    setActiveClientJobId(cjid)
+
     if (user) {
-      await reserveCredits(user.id, estimatedCredits)
+      try {
+        await reserveCredits('video_export', durationSeconds, estimatedCredits, cjid, {
+          resolution: settings.exportResolution,
+          is_premium_template: false,
+          duration_seconds: durationSeconds
+        })
+      } catch (err: any) {
+        setActiveClientJobId(null)
+        setLimitModalReason(err.message || "Internet connection is required to verify credits before starting this export.")
+        setLimitModalRequiredPlan(undefined)
+        setLimitModalOpen(true)
+        return
+      }
     }
 
     setStatus('uploading')
@@ -434,7 +452,10 @@ export default function App() {
       const { job_id } = await startJob(audioInputMode, audioFile, audioZip, imagesZip, csvFile, activeSettings, introFile, outroFile, bgMusicFile)
       setCurrentJobId(job_id); setStatus('generating')
     } catch (err) {
-      if (user) await refundCredits(user.id, estimatedCredits)
+      if (user) {
+        await finalizeJob(cjid, 'failed')
+        setActiveClientJobId(null)
+      }
       setResult({ success: false, errors: [String(err)], warnings: [], timeline_report: [] })
       setStatus('error')
     }
@@ -469,17 +490,10 @@ export default function App() {
   }
 
   const handleJobComplete = useCallback(async (jobStatus: JobStatus) => {
-    let usedCredits = 0
-    if (audioDuration) {
-      usedCredits = await estimateCredits('video_export', {
-        resolution: settings.exportResolution,
-        duration_seconds: audioDuration || 60
-      })
-    }
-    
     if (jobStatus.status === 'completed') {
-      if (usedCredits > 0) {
-        await deductCredits(user?.id || "local", usedCredits, jobStatus.job_id)
+      if (user && activeClientJobId) {
+        await finalizeJob(activeClientJobId, 'success')
+        setActiveClientJobId(null)
       }
       setResult({
         success: true,
@@ -494,8 +508,9 @@ export default function App() {
       setStatus('done')
       notifyRenderCompleted(jobStatus.output_filename ?? undefined)
     } else {
-      if (user && usedCredits > 0) {
-        await refundCredits(user.id, usedCredits)
+      if (user && activeClientJobId) {
+        await finalizeJob(activeClientJobId, 'failed')
+        setActiveClientJobId(null)
       }
       setResult({
         success: false,
@@ -506,7 +521,7 @@ export default function App() {
       setStatus('error')
       notifyRenderFailed(jobStatus.errors[0] || 'Unknown error')
     }
-  }, [user, audioDuration, settings.exportResolution])
+  }, [user, activeClientJobId])
 
   const handleCancelled = useCallback(async () => {
     setCurrentJobId(null);
@@ -515,14 +530,11 @@ export default function App() {
     setTimeout(() => setCancelledMsg(null), 4000)
     setResult(null)
     
-    if (user && audioDuration) {
-      const usedCredits = await estimateCredits('video_export', {
-        resolution: settings.exportResolution,
-        duration_seconds: audioDuration || 60
-      })
-      await refundCredits(user.id, usedCredits)
+    if (user && activeClientJobId) {
+      await finalizeJob(activeClientJobId, 'cancelled')
+      setActiveClientJobId(null)
     }
-  }, [user, audioDuration, settings.exportResolution])
+  }, [user, activeClientJobId])
 
   // Derived
   const isAuthCallback =

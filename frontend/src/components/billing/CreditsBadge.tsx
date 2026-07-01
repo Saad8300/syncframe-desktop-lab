@@ -11,7 +11,7 @@ export function CreditsBadge() {
     return <div className="h-5 w-20 bg-[var(--bg-input)] rounded animate-pulse" />
   }
 
-  const total = plan?.monthly_credits || credits?.monthly_credit_limit || 30
+  const total = plan?.monthly_credits || credits?.monthly_allocation || 30
   const isFreeTrial = !plan || plan.id === 'free' || plan.id === 'free_trial';
   
   let resetDateStr = ''

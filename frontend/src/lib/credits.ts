@@ -1,31 +1,17 @@
+import { supabase } from './supabaseClient'
+
 export interface UserCredits {
   user_id: string
   balance: number
   monthly_allocation: number
   lifetime_used: number
   period_start: string
-  period_end?: string
-  free_video_exports_used: number
-
-  // ── Monthly Billing Fields (Backend Enforcement Pending) ──
-  plan_id?: string
-  subscription_status?: string
-  monthly_credit_limit?: number
-  credits_used_this_period?: number
-  billing_period_start?: string
-  billing_period_end?: string
-  last_credit_reset_at?: string
   next_credit_reset_at?: string
-}
-
-export interface CreditEstimateResponse {
-  required_credits: number
-  breakdown: Array<{label: string, credits: number}>
-  plan_notes: string
+  free_video_exports_used?: number
 }
 
 export async function estimateCredits(tool: string, options: any): Promise<number> {
-  // Placeholder frontend credit estimation
+  // Client-side estimation (Backend actually strictly enforces the final minimum)
   const dur = options.duration_seconds || 60
   const is_batch = options.is_batch || false
   const num_videos = options.num_videos || 1
@@ -33,7 +19,7 @@ export async function estimateCredits(tool: string, options: any): Promise<numbe
   let baseCost = 0
   if (tool === 'script_timestamp') baseCost = Math.max(1, Math.ceil(dur / 60))
   else if (tool === 'audio_merger') baseCost = Math.max(1, Math.ceil(dur / 300))
-  else if (tool === 'video_export' || tool === 'batch_video') {
+  else if (tool === 'video_export' || tool === 'batch_video' || tool === 'media_timeline' || tool === 'video_timeline') {
     const res = options.resolution || '720p'
     let costPerMin = 5
     if (res === '1080p') costPerMin = 10
@@ -50,41 +36,58 @@ export async function estimateCredits(tool: string, options: any): Promise<numbe
   return totalCost
 }
 
-export async function reserveCredits(userId: string, amount: number): Promise<boolean> {
-  console.log(`[Credits] Reserving ${amount} credits for user ${userId}`)
-  // TODO: Implement actual backend reservation
-  return true
-}
-
-export async function deductCredits(userId: string, amount: number, jobId?: string): Promise<boolean> {
-  if (jobId) {
-    const deductedJobs = JSON.parse(localStorage.getItem('deducted_jobs') || '{}');
-    if (deductedJobs[jobId]) {
-      console.log(`[Credits] Already deducted for job ${jobId}`);
-      return true;
-    }
-    deductedJobs[jobId] = true;
-    localStorage.setItem('deducted_jobs', JSON.stringify(deductedJobs));
+export async function reserveCredits(
+  toolName: string,
+  durationSeconds: number,
+  clientEstimatedCost: number,
+  clientJobId: string,
+  optionsJson: any = {}
+): Promise<string> {
+  console.log(`[Credits] Reserving ${clientEstimatedCost} credits for job ${clientJobId} (${toolName})`)
+  
+  if (!supabase) {
+    throw new Error('Supabase client not initialized');
   }
-  console.log(`[Credits] Deducting ${amount} credits for user ${userId}`)
-  // TODO: Implement actual backend deduction
-  // IMPORTANT: Monthly expiry and paid credit resets must be enforced via secure backend cron job or Stripe webhooks.
-  // This frontend deduction is currently serving as a local/demo fallback.
+
+  const { data, error } = await supabase.rpc('reserve_credits', {
+    p_client_job_id: clientJobId,
+    p_tool_name: toolName,
+    p_duration_seconds: durationSeconds,
+    p_client_estimated_cost: clientEstimatedCost,
+    p_options_json: optionsJson
+  });
+
+  if (error) {
+    console.error('[Credits] Reservation failed:', error);
+    throw error;
+  }
   
-  // Local Free Trial tracking
-  const count = parseInt(localStorage.getItem('free_exports') || '0', 10)
-  localStorage.setItem('free_exports', (count + amount).toString());
   window.dispatchEvent(new Event('syncframe:credits-updated'))
+  return data as string; // returns the UUID of the usage_job
+}
+
+export async function finalizeJob(
+  clientJobId: string,
+  status: 'success' | 'failed' | 'cancelled'
+): Promise<boolean> {
+  console.log(`[Credits] Finalizing job ${clientJobId} as ${status}`)
   
-  return true
-}
+  if (!supabase) {
+    console.error('Supabase client not initialized');
+    return false;
+  }
 
-export async function refundCredits(userId: string, amount: number): Promise<boolean> {
-  console.log(`[Credits] Refunding ${amount} credits for user ${userId}`)
-  // TODO: Implement actual backend refund
-  return true
-}
+  const { data, error } = await supabase.rpc('finalize_job', {
+    p_client_job_id: clientJobId,
+    p_status: status
+  });
 
-export function getFreeExportCount(): number {
-  return parseInt(localStorage.getItem('free_exports') || '0', 10)
+  if (error) {
+    console.error('[Credits] Finalization failed:', error);
+    // Even if it fails (e.g. network issue), the backend handles the pending state, but it might tie up credits.
+    return false;
+  }
+
+  window.dispatchEvent(new Event('syncframe:credits-updated'))
+  return !!data;
 }

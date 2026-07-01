@@ -16,7 +16,7 @@ import { loadSettings } from '../utils/appSettings'
 import { consumePendingTemplate, saveTemplate } from '../utils/templateStore'
 
 import { resolveBackendUrl } from '../utils/api'
-import { estimateCredits, deductCredits, reserveCredits } from '../lib/credits'
+import { estimateCredits, reserveCredits, finalizeJob } from '../lib/credits'
 import { usePlan } from '../hooks/usePlan'
 import { useCredits } from '../hooks/useCredits'
 import { AccessLimitModal } from './billing/AccessLimitModal'
@@ -57,6 +57,7 @@ export default function AudioMergerPage() {
   const [status, setStatus] = useState<'idle' | 'merging' | 'success' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState<string>('')
   const [result, setResult] = useState<MergeResponse | null>(null)
+  const [activeClientJobId, setActiveClientJobId] = useState<string | null>(null)
   
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -129,16 +130,27 @@ export default function AudioMergerPage() {
       setErrorMsg('Add at least 2 audio parts to merge.')
       return
     }
-    const estimatedCredits = await estimateCredits('audio_merger', { duration_seconds: 60 })
-    const access = canUseTool(plan, remaining, 'audio_merger', {}, estimatedCredits)
+    const durationSeconds = 60
+    const estimatedCredits = await estimateCredits('audio_merger', { duration_seconds: durationSeconds })
+    const access = canUseTool(plan, remaining, 'audio_merger', { duration_seconds: durationSeconds }, estimatedCredits)
     if (!access.allowed) {
       setLimitModalReason(access.reason)
       setLimitModalRequiredPlan(access.requiredPlan)
       setLimitModalOpen(true)
       return
     }
+
+    const cjid = crypto.randomUUID()
+    setActiveClientJobId(cjid)
+
     if (user) {
-      await reserveCredits(user.id, estimatedCredits)
+      try {
+        await reserveCredits('audio_merger', durationSeconds, estimatedCredits, cjid, { duration_seconds: durationSeconds })
+      } catch (err: any) {
+        setActiveClientJobId(null)
+        setErrorMsg(err.message || 'Internet connection is required to verify credits before starting this export.')
+        return
+      }
     }
     setStatus('merging')
     setErrorMsg('')
@@ -167,9 +179,11 @@ export default function AudioMergerPage() {
       }
 
       const data = await res.json()
-      const estimatedCredits = await estimateCredits('audio_merger', { duration_seconds: data.duration || 60 })
-      const stableJobId = `audio_merge:${data.filename}:${data.duration || 0}:${Date.now()}`
-      await deductCredits(user?.id || "local", estimatedCredits, stableJobId)
+      
+      if (user) {
+        await finalizeJob(cjid, 'success')
+        setActiveClientJobId(null)
+      }
 
       setResult({
         url: resolveBackendUrl(data.url || ''),
@@ -180,6 +194,10 @@ export default function AudioMergerPage() {
       })
       setStatus('success')
     } catch (err: any) {
+      if (user) {
+        await finalizeJob(cjid, 'failed')
+        setActiveClientJobId(null)
+      }
       console.error(err)
       setErrorMsg(err.message || 'An unexpected error occurred.')
       setStatus('error')

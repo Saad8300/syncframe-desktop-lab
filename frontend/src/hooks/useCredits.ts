@@ -13,21 +13,14 @@ export function useCredits() {
     let mounted = true
     
     async function loadCredits() {
-      // Local Trial Fallback
-      const getLocalCredits = () => {
-        const used = parseInt(localStorage.getItem('free_exports') || '0', 10);
+      // Fallback local trial if completely disconnected / not logged in
+      const getLocalCredits = (): UserCredits => {
         return {
           user_id: user?.id || 'local',
-          balance: Math.max(0, 30 - used),
+          balance: 0,
           monthly_allocation: 30,
-          lifetime_used: used,
-          period_start: new Date().toISOString(),
-          free_video_exports_used: used,
-          
-          plan_id: 'free',
-          subscription_status: 'active',
-          monthly_credit_limit: 30,
-          credits_used_this_period: used
+          lifetime_used: 0,
+          period_start: new Date().toISOString()
         };
       };
 
@@ -43,71 +36,26 @@ export function useCredits() {
       setError(null)
       try {
         const { data, error } = await supabase
-          .from('user_credits')
+          .from('credit_balances')
           .select('*')
           .eq('user_id', user.id)
           .single()
 
         if (error && error.code !== 'PGRST116') {
-          console.warn("Failed to fetch credits", error)
+          console.warn("Failed to fetch credit_balances", error)
           throw error
         }
 
         if (mounted) {
           if (data) {
-            const localUsed = parseInt(localStorage.getItem('free_exports') || '0', 10);
-            const userCredits = data as UserCredits;
-            
-            let available = 0;
-            let monthlyLimit = 30;
-            let finalUsedThisPeriod = localUsed;
-            
-            // Client-side expiry simulation (Backend MUST enforce this in production)
-            let isExpired = false;
-            let isInactive = false;
-            if (userCredits.billing_period_end && Date.now() > new Date(userCredits.billing_period_end).getTime()) {
-                isExpired = true;
-                if (userCredits.subscription_status !== 'active') {
-                    isInactive = true;
-                }
-            }
-
-            // Check if backend supports new monthly fields
-            const hasMonthlyFields = 'monthly_credit_limit' in userCredits || 'credits_used_this_period' in userCredits;
-
-            if (hasMonthlyFields) {
-              monthlyLimit = userCredits.monthly_credit_limit ?? userCredits.monthly_allocation ?? userCredits.balance ?? 30;
-              let backendUsedThisPeriod = userCredits.credits_used_this_period ?? 0;
-              
-              if (isExpired) {
-                  if (isInactive) {
-                      monthlyLimit = 0;
-                      backendUsedThisPeriod = 0;
-                  } else {
-                      // locally simulate reset until backend catches up
-                      backendUsedThisPeriod = 0;
-                  }
-              }
-              
-              available = Math.max(0, monthlyLimit - backendUsedThisPeriod - localUsed);
-              finalUsedThisPeriod = backendUsedThisPeriod + localUsed;
-            } else {
-              // Legacy fallback
-              monthlyLimit = userCredits.monthly_allocation ?? userCredits.balance ?? 30;
-              available = Math.max(0, (userCredits.balance ?? 30) - localUsed);
-              
-              if (isExpired && isInactive) {
-                  available = 0;
-              }
-            }
-
             setCredits({
-              ...userCredits,
-              balance: available,
-              monthly_credit_limit: monthlyLimit,
-              credits_used_this_period: finalUsedThisPeriod,
-              lifetime_used: userCredits.lifetime_used + localUsed,
-              free_video_exports_used: userCredits.free_video_exports_used + localUsed
+              user_id: data.user_id,
+              balance: data.balance,
+              monthly_allocation: data.monthly_allocation,
+              lifetime_used: data.lifetime_used,
+              period_start: data.period_start,
+              next_credit_reset_at: data.next_reset_at,
+              free_video_exports_used: 0 // Not relevant for server-enforced
             });
           } else {
             setCredits(getLocalCredits())

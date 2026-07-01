@@ -1,4 +1,4 @@
-import { deductCredits } from '../lib/credits';
+// MediaTimelinePage.tsx
 import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useAuth } from '../auth/AuthProvider'
 import StudioPageHeader from './StudioPageHeader'
@@ -30,7 +30,7 @@ import { consumePendingTemplate, saveTemplate } from '../utils/templateStore'
 import { usePlan } from '../hooks/usePlan'
 import { useCredits } from '../hooks/useCredits'
 import { AccessLimitModal } from './billing/AccessLimitModal'
-import { estimateCredits, reserveCredits } from '../lib/credits'
+import { estimateCredits, reserveCredits, finalizeJob } from '../lib/credits'
 import { canUseTool } from '../lib/plans'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -339,6 +339,7 @@ export default function MediaTimelinePage() {
   const [status, setStatus] = useState<GenerateStatus>('idle')
   const [jobId, setJobId] = useState<string | null>(null)
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null)
+  const [activeClientJobId, setActiveClientJobId] = useState<string | null>(null)
   const [result, setResult] = useState<GenerateResponse | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [isAddingToQueue, setIsAddingToQueue] = useState(false)
@@ -366,12 +367,36 @@ export default function MediaTimelinePage() {
   const handleWmTextChange = (text: string) => {
   }
 
+  const [audioDur, setAudioDur] = useState<number | null>(null)
+  
+  // Calculate audio duration
+  useEffect(() => {
+    if (audioInputMode !== 'single' || !audioFile) {
+      setAudioDur(null)
+      return
+    }
+    const url = URL.createObjectURL(audioFile)
+    const audio = new Audio(url)
+    audio.addEventListener('loadedmetadata', () => {
+      setAudioDur(audio.duration)
+      URL.revokeObjectURL(url)
+    })
+    audio.addEventListener('error', () => {
+      setAudioDur(null)
+      URL.revokeObjectURL(url)
+    })
+  }, [audioFile, audioInputMode])
+
   const disabled = status === 'uploading' || status === 'generating' || status === 'cancelling'
   const isReady  = (audioInputMode === 'single' ? !!audioFile : !!audioZip) && !!mediaZip && !!timelineCsv && !disabled
 
-  const handleJobComplete = useCallback((statusData: JobStatus) => {
+  const handleJobComplete = useCallback(async (statusData: JobStatus) => {
     setJobStatus(statusData)
     if (statusData.status === 'completed') {
+      if (user && activeClientJobId) {
+        await finalizeJob(activeClientJobId, 'success')
+        setActiveClientJobId(null)
+      }
       setResult({
         success: true,
         job_id: statusData.job_id,
@@ -385,6 +410,10 @@ export default function MediaTimelinePage() {
       })
       setStatus('done')
     } else {
+      if (user && activeClientJobId) {
+        await finalizeJob(activeClientJobId, 'failed')
+        setActiveClientJobId(null)
+      }
       setResult({
         success: false,
         errors:  statusData.errors.length ? statusData.errors : ['Media timeline generation failed.'],
@@ -393,14 +422,18 @@ export default function MediaTimelinePage() {
       })
       setStatus('error')
     }
-  }, [])
+  }, [user, activeClientJobId])
 
-  const handleCancelled = useCallback(() => {
+  const handleCancelled = useCallback(async () => {
+    if (user && activeClientJobId) {
+      await finalizeJob(activeClientJobId, 'cancelled')
+      setActiveClientJobId(null)
+    }
     setJobId(null)
     setStatus('idle')
     setErrorMsg('Generation cancelled.')
     setTimeout(() => setErrorMsg(null), 4000)
-  }, [])
+  }, [user, activeClientJobId])
 
   const computeActiveSettings = (s: MediaTimelineSettings) => {
     const isActive = s.textOverlayMode === 'whole_video' ? (s.textOverlayText || '').trim().length > 0
@@ -412,16 +445,29 @@ export default function MediaTimelinePage() {
   const handleGenerate = async () => {
     if (!requireAuth()) return
     if (!isReady) return
-    const estimatedCredits = await estimateCredits('media_timeline', { duration_seconds: 60, resolution: settings.exportResolution })
-    const access = canUseTool(plan, remaining, 'media_timeline', {}, estimatedCredits)
+    
+    const durationSeconds = audioDur || 60
+    
+    const estimatedCredits = await estimateCredits('media_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution })
+    const access = canUseTool(plan, remaining, 'media_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution }, estimatedCredits)
     if (!access.allowed) {
       setLimitModalReason(access.reason)
       setLimitModalRequiredPlan(access.requiredPlan)
       setLimitModalOpen(true)
       return
     }
+    const cjid = crypto.randomUUID()
+    setActiveClientJobId(cjid)
+
     if (user) {
-      await reserveCredits(user.id, estimatedCredits)
+      try {
+        await reserveCredits('media_timeline', durationSeconds, estimatedCredits, cjid, { resolution: settings.exportResolution, duration_seconds: durationSeconds })
+      } catch (err: any) {
+        setActiveClientJobId(null)
+        setLimitModalReason(err.message || 'Internet connection is required to verify credits before starting this export.')
+        setLimitModalOpen(true)
+        return
+      }
     }
     setStatus('uploading')
     setErrorMsg(null)
@@ -444,6 +490,10 @@ export default function MediaTimelinePage() {
       setJobId(res.job_id)
       setStatus('generating')
     } catch (err: any) {
+      if (user) {
+        await finalizeJob(cjid, 'failed')
+        setActiveClientJobId(null)
+      }
       console.error(err)
       setErrorMsg(err.message || 'Failed to start generation.')
       setStatus('error')
@@ -455,9 +505,32 @@ export default function MediaTimelinePage() {
 
     setIsAddingToQueue(true)
     setSuccessQueueMsg(null)
+    
+    let cjid: string | null = null
+    let reserved = false
 
     try {
-      const activeSettings = computeActiveSettings(settings);
+      const activeSettings: any = computeActiveSettings(settings);
+      
+      const durationSeconds = audioDur || 60
+      cjid = crypto.randomUUID()
+      const estimatedCredits = await estimateCredits('media_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution })
+      
+      if (user) {
+        try {
+          await reserveCredits('media_timeline', durationSeconds, estimatedCredits, cjid, {
+             is_batch: true, resolution: settings.exportResolution, duration_seconds: durationSeconds 
+          })
+          reserved = true
+        } catch (err: any) {
+          setLimitModalReason(err.message || 'Internet connection is required to verify credits before starting this export.')
+          setLimitModalOpen(true)
+          setIsAddingToQueue(false)
+          return
+        }
+      }
+
+      activeSettings.cjid = cjid
       await createMediaTimelineBatchJob(
         audioInputMode,
         audioFile,
@@ -468,9 +541,16 @@ export default function MediaTimelinePage() {
         introFile,
         outroFile
       )
+      
+      // Do NOT call finalizeJob(cjid, 'success') immediately. 
+      // It is now attached to activeSettings.cjid and will be finalized by BatchVideoGeneratorPage
+      
       setSuccessQueueMsg("Added to Batch Queue")
       setTimeout(() => setSuccessQueueMsg(null), 4000)
     } catch (err: any) {
+      if (user && cjid && reserved) {
+        await finalizeJob(cjid, 'failed').catch(console.error)
+      }
       alert("Failed to add to queue: " + (err.message || err))
     } finally {
       setIsAddingToQueue(false)

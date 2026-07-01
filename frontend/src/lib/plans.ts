@@ -1,4 +1,3 @@
-import { getFreeExportCount } from './credits'
 
 export interface PlanLimits {
   max_video_exports?: number
@@ -106,20 +105,7 @@ export function canUseTool(
     }
   }
 
-  if (currentPlan.id === 'free_trial' && (tool === 'video_export' || tool === 'batch_video')) {
-    if (getFreeExportCount() >= 3) {
-      return {
-        allowed: false,
-        reason: 'You have reached the maximum of 3 free exports.',
-        requiredCredits: 0,
-        upgradeRequired: true,
-        planLimitExceeded: true,
-        requiredPlan: 'Starter',
-        limitType: 'tool',
-        suggestedFix: 'Upgrade your plan to continue creating videos'
-      }
-    }
-  }
+
   
   const dur = requestedOptions.duration_seconds || 0
   if (tool === 'video_export' || tool === 'batch_video') {

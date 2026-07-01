@@ -261,7 +261,7 @@ export async function createVideoTimelineBatchJob(
   audioZip:    File | null,
   videosZip:   File,
   timelineCsv: File,
-  settings:    VideoTimelineSettings,
+  settings:    VideoTimelineSettings & { cjid?: string | null },
   introFile?:  File | null,
   outroFile?:  File | null,
 ): Promise<{ job: BatchJob }> {
@@ -285,6 +285,7 @@ export async function createVideoTimelineBatchJob(
   // Core settings
   form.append('aspect_ratio',      settings.aspectRatio)
   form.append('export_resolution', settings.exportResolution)
+  if (settings.cjid) form.append('cjid', settings.cjid)
   form.append('fit_mode',          settings.fitMode)
   form.append('fill_mode',         settings.fillMode)
   form.append('render_profile',    settings.renderProfile)
@@ -595,6 +596,7 @@ export async function startMediaTimelineJob(
     backgroundMusicVolume: number
     backgroundMusicLoop:   boolean
     backgroundMusicFade:   boolean
+    cjid?:                 string | null
   },
   introFile?:  File | null,
   outroFile?:  File | null,
@@ -617,6 +619,7 @@ export async function startMediaTimelineJob(
   form.append('fill_mode',         settings.fillMode)
   form.append('render_profile',    settings.renderProfile)
   form.append('output_name',       settings.outputName || 'media_timeline')
+  if (settings.cjid) form.append('cjid', settings.cjid)
 
   form.append('text_position',   settings.textPosition)
   form.append('text_size',       settings.textSize)

@@ -27,7 +27,7 @@ export function usePlan() {
       try {
         // Fetch user subscription
         const { data: subData, error: subError } = await supabase
-          .from('user_subscriptions')
+          .from('subscriptions')
           .select('*')
           .eq('user_id', user.id)
           .single()
@@ -53,8 +53,22 @@ export function usePlan() {
 
         if (mounted) {
           if (subData) setSubscription(subData)
-          if (planData) setPlan(planData as Plan)
-          else setPlan(FALLBACK_FREE_PLAN)
+          if (planData) {
+            // Map the new limits_json column back to the expected limits object
+            const mappedPlan: Plan = {
+              id: planData.id,
+              display_name: planData.display_name,
+              monthly_credits: planData.monthly_credits,
+              limits: planData.limits_json || {},
+              features: planData.features || [],
+              price_placeholder: planData.price_placeholder,
+              active: planData.active,
+              sort_order: planData.sort_order
+            }
+            setPlan(mappedPlan)
+          } else {
+            setPlan(FALLBACK_FREE_PLAN)
+          }
         }
       } catch (err: any) {
         if (mounted) {
@@ -69,7 +83,15 @@ export function usePlan() {
 
     loadPlan()
 
-    return () => { mounted = false }
+    const handleUpdate = () => {
+      loadPlan();
+    };
+    window.addEventListener('syncframe:plan-updated', handleUpdate);
+
+    return () => { 
+      mounted = false 
+      window.removeEventListener('syncframe:plan-updated', handleUpdate);
+    }
   }, [user, isAuthenticated, isConfigured])
 
   return { plan, subscription, loading, error }

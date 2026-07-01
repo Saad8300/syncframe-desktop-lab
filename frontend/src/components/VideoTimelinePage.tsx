@@ -1,4 +1,4 @@
-import { deductCredits } from '../lib/credits';
+// VideoTimelinePage.tsx
 // components/VideoTimelinePage.tsx — Video Timeline workflow (Batch 10B + 10C)
 
 import React, { useState, useCallback, useEffect, useRef } from 'react'
@@ -43,7 +43,7 @@ import { consumePendingTemplate, saveTemplate } from '../utils/templateStore'
 import { usePlan } from '../hooks/usePlan'
 import { useCredits } from '../hooks/useCredits'
 import { AccessLimitModal } from './billing/AccessLimitModal'
-import { estimateCredits, reserveCredits } from '../lib/credits'
+import { estimateCredits, reserveCredits, finalizeJob } from '../lib/credits'
 import { canUseTool } from '../lib/plans'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -488,6 +488,7 @@ export default function VideoTimelinePage() {
   const [currentJobId, setCurrentJobId] = useState<string | null>(null)
   const [result,       setResult]       = useState<GenerateResponse | null>(null)
   const [cancelledMsg, setCancelledMsg] = useState<string | null>(null)
+  const [activeClientJobId, setActiveClientJobId] = useState<string | null>(null)
   const [isAddingToQueue, setIsAddingToQueue] = useState(false)
   const [successQueueMsg, setSuccessQueueMsg] = useState<string | null>(null)
 
@@ -515,16 +516,29 @@ export default function VideoTimelinePage() {
   const handleGenerate = async () => {
     if (!requireAuth()) return
     if ((audioInputMode === 'single' ? !audioFile : !audioZip) || !videosZip || !csvFile) return
-    const estimatedCredits = await estimateCredits('video_timeline', { duration_seconds: visualDur || audioDur || 60, resolution: settings.exportResolution || "1080p" })
-    const access = canUseTool(plan, remaining, 'video_timeline', {}, estimatedCredits)
+    
+    const durationSeconds = visualDur || audioDur || 60
+    
+    const estimatedCredits = await estimateCredits('video_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution || "1080p" })
+    const access = canUseTool(plan, remaining, 'video_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution }, estimatedCredits)
     if (!access.allowed) {
       setLimitModalReason(access.reason)
       setLimitModalRequiredPlan(access.requiredPlan)
       setLimitModalOpen(true)
       return
     }
+    const cjid = crypto.randomUUID()
+    setActiveClientJobId(cjid)
+
     if (user) {
-      await reserveCredits(user.id, estimatedCredits)
+      try {
+        await reserveCredits('video_timeline', durationSeconds, estimatedCredits, cjid, { resolution: settings.exportResolution, duration_seconds: durationSeconds })
+      } catch (err: any) {
+        setActiveClientJobId(null)
+        setLimitModalReason(err.message || 'Internet connection is required to verify credits before starting this export.')
+        setLimitModalOpen(true)
+        return
+      }
     }
     setResult(null); setCancelledMsg(null); setStatus('uploading')
     try {
@@ -535,6 +549,10 @@ export default function VideoTimelinePage() {
       )
       setCurrentJobId(job_id); setStatus('generating')
     } catch (err) {
+      if (user) {
+        await finalizeJob(cjid, 'failed')
+        setActiveClientJobId(null)
+      }
       setResult({ success: false, errors: [String(err)], warnings: [], timeline_report: [] })
       setStatus('error')
     }
@@ -547,23 +565,57 @@ export default function VideoTimelinePage() {
     setIsAddingToQueue(true)
     setSuccessQueueMsg(null)
 
+    let cjid: string | null = null
+    let reserved = false
+
     try {
-      const activeSettings = computeActiveSettings(settings);
+      const activeSettings: any = computeActiveSettings(settings);
+      
+      const durationSeconds = visualDur || audioDur || 60
+      cjid = crypto.randomUUID()
+      const estimatedCredits = await estimateCredits('video_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution || "1080p" })
+      
+      if (user) {
+        try {
+          await reserveCredits('video_timeline', durationSeconds, estimatedCredits, cjid, {
+             is_batch: true, resolution: settings.exportResolution, duration_seconds: durationSeconds 
+          })
+          reserved = true
+        } catch (err: any) {
+          setLimitModalReason(err.message || 'Internet connection is required to verify credits before starting this export.')
+          setLimitModalOpen(true)
+          setIsAddingToQueue(false)
+          return
+        }
+      }
+
+      activeSettings.cjid = cjid
       await createVideoTimelineBatchJob(
         audioInputMode, audioFile, audioZip, videosZip, csvFile, activeSettings,
         introFile, outroFile,
       )
+      
+      // Do NOT call finalizeJob(cjid, 'success') immediately. 
+      // It is now attached to activeSettings.cjid and will be finalized by BatchVideoGeneratorPage
+      
       setSuccessQueueMsg("Added to Batch Queue")
       setTimeout(() => setSuccessQueueMsg(null), 4000)
-    } catch (err) {
-      alert("Failed to add to queue: " + err)
+    } catch (err: any) {
+      if (user && cjid && reserved) {
+        await finalizeJob(cjid, 'failed').catch(console.error)
+      }
+      alert("Failed to add to queue: " + (err.message || err))
     } finally {
       setIsAddingToQueue(false)
     }
   }
 
-  const handleJobComplete = useCallback((jobStatus: JobStatus) => {
+  const handleJobComplete = useCallback(async (jobStatus: JobStatus) => {
     if (jobStatus.status === 'completed') {
+      if (user && activeClientJobId) {
+        await finalizeJob(activeClientJobId, 'success')
+        setActiveClientJobId(null)
+      }
       setResult({
         success: true,
         job_id: jobStatus.job_id,
@@ -576,6 +628,10 @@ export default function VideoTimelinePage() {
       })
       setStatus('done')
     } else {
+      if (user && activeClientJobId) {
+        await finalizeJob(activeClientJobId, 'failed')
+        setActiveClientJobId(null)
+      }
       setResult({
         success: false,
         errors:  jobStatus.errors.length ? jobStatus.errors : ['Video timeline generation failed.'],
@@ -584,13 +640,17 @@ export default function VideoTimelinePage() {
       })
       setStatus('error')
     }
-  }, [])
+  }, [user, activeClientJobId])
 
-  const handleCancelled = useCallback(() => {
+  const handleCancelled = useCallback(async () => {
+    if (user && activeClientJobId) {
+      await finalizeJob(activeClientJobId, 'cancelled')
+      setActiveClientJobId(null)
+    }
     setCurrentJobId(null); setStatus('idle')
     setCancelledMsg('Generation cancelled.')
     setTimeout(() => setCancelledMsg(null), 4000)
-  }, [])
+  }, [user, activeClientJobId])
 
   const rowCount = result?.timeline_report?.length ?? 0
 

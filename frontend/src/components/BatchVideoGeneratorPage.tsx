@@ -19,7 +19,7 @@ import { notifyBatchQueueCompleted, notifyBatchJobFailed } from '../utils/notifi
 import { usePlan } from '../hooks/usePlan'
 import { useCredits } from '../hooks/useCredits'
 import { AccessLimitModal } from './billing/AccessLimitModal'
-import { estimateCredits, reserveCredits } from '../lib/credits'
+import { finalizeJob } from '../lib/credits'
 import type { ToolAccessResult } from '../lib/plans'
 import { canUseTool } from '../lib/plans'
 
@@ -40,10 +40,13 @@ export default function BatchVideoGeneratorPage() {
   const [prevIsRunning, setPrevIsRunning] = useState<boolean | null>(null)
   const [prevFailedCount, setPrevFailedCount] = useState<number | null>(null)
 
+  const [finalizedJobIds, setFinalizedJobIds] = useState<Set<string>>(new Set())
+
   useEffect(() => {
     if (prevIsRunning === true && batchState?.is_running === false && stats?.queued === 0) {
       notifyBatchQueueCompleted(stats.completed, stats.failed)
     }
+
     
     if (prevFailedCount !== null && stats.failed > prevFailedCount) {
       notifyBatchJobFailed("A job in the batch queue failed.")
@@ -52,6 +55,43 @@ export default function BatchVideoGeneratorPage() {
     if (batchState) setPrevIsRunning(batchState.is_running)
     if (stats) setPrevFailedCount(stats.failed)
   }, [batchState?.is_running, stats?.failed])
+  
+  // Track individual job completion to finalize their specific cjids
+  useEffect(() => {
+    if (!user) return
+    let updated = false
+    const newFinalized = new Set(finalizedJobIds)
+
+    jobs.forEach(job => {
+      if (!newFinalized.has(job.id)) {
+        const cjid = job.config?.cjid
+        if (cjid) {
+          if (job.status === 'completed') {
+            finalizeJob(cjid, 'success').catch(console.error)
+            newFinalized.add(job.id)
+            updated = true
+          } else if (job.status === 'failed') {
+            finalizeJob(cjid, 'failed').catch(console.error)
+            newFinalized.add(job.id)
+            updated = true
+          } else if (job.status === 'cancelled') {
+            finalizeJob(cjid, 'cancelled').catch(console.error)
+            newFinalized.add(job.id)
+            updated = true
+          }
+        } else {
+          if (['completed', 'failed', 'cancelled'].includes(job.status)) {
+            newFinalized.add(job.id)
+            updated = true
+          }
+        }
+      }
+    })
+
+    if (updated) {
+      setFinalizedJobIds(newFinalized)
+    }
+  }, [jobs, user, finalizedJobIds])
   
   const [filterStatus, setFilterStatus] = useState<string>('all')
   const [filterTool, setFilterTool] = useState<string>('all')
@@ -129,27 +169,22 @@ export default function BatchVideoGeneratorPage() {
     if (!requireAuth()) return
 
     const pendingJobs = jobs.filter((j: any) => j.status === 'queued' || j.status === 'failed') || []
-    const estimatedCredits = await estimateCredits('batch_video', {
-      is_batch: true,
-      num_videos: pendingJobs.length || 1,
-      resolution: '1080p', // rough estimate
-      duration_seconds: 60
-    })
-
-    const access = canUseTool(plan, remaining, 'batch_video', { is_batch: true }, estimatedCredits)
-    if (!access.allowed) {
-      setLimitModalReason(access.reason)
-      setLimitModalRequiredPlan(access.requiredPlan)
-      setLimitModalOpen(true)
-      return
-    }
-
+    
     if (user) {
-      await reserveCredits(user.id, estimatedCredits)
+      const missingCjid = pendingJobs.some((j: any) => !j.config?.cjid)
+      if (missingCjid) {
+        alert("Some queued jobs are missing credit reservations. Please remove and re-add them.")
+        return
+      }
     }
 
     setIsQueueLoading(true)
-    try { await startBatchQueue(); await loadData() } catch (e) { alert("Start failed: " + e) } 
+    try { 
+      await startBatchQueue(); 
+      await loadData() 
+    } catch (e) { 
+      alert("Start failed: " + e) 
+    } 
     finally { setIsQueueLoading(false) }
   }
 

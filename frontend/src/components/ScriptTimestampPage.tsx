@@ -1,4 +1,4 @@
-import { deductCredits } from '../lib/credits';
+// ScriptTimestampPage.tsx
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import {
   IconMusic,
@@ -19,7 +19,7 @@ import { consumePendingTemplate, saveTemplate } from '../utils/templateStore'
 import { usePlan } from '../hooks/usePlan'
 import { useCredits } from '../hooks/useCredits'
 import { AccessLimitModal } from './billing/AccessLimitModal'
-import { estimateCredits, reserveCredits } from '../lib/credits'
+import { estimateCredits, reserveCredits, finalizeJob } from '../lib/credits'
 import { canUseTool } from '../lib/plans'
 
 function IconMic({ size = 24, style }: { size?: number; style?: React.CSSProperties }) {
@@ -145,6 +145,26 @@ export default function ScriptTimestampPage() {
   const [limitModalRequiredPlan, setLimitModalRequiredPlan] = useState<string | undefined>(undefined)
   const [audioFile, setAudioFile]   = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [audioDur, setAudioDur] = useState<number | null>(null)
+  
+  // Calculate audio duration
+  useEffect(() => {
+    if (!audioFile) {
+      setAudioDur(null)
+      return
+    }
+    const url = URL.createObjectURL(audioFile)
+    const audio = new Audio(url)
+    audio.addEventListener('loadedmetadata', () => {
+      setAudioDur(audio.duration)
+      URL.revokeObjectURL(url)
+    })
+    audio.addEventListener('error', () => {
+      setAudioDur(null)
+      URL.revokeObjectURL(url)
+    })
+  }, [audioFile])
   
   // Settings - new defaults for Short-form video workflow
   const [modelKey, setModelKey]     = useState('base')
@@ -184,6 +204,7 @@ export default function ScriptTimestampPage() {
   const [jobId, setJobId]           = useState<string | null>(null)
   const [result, setResult]         = useState<any | null>(null)
   const [copied, setCopied]         = useState(false)
+  const [activeClientJobId, setActiveClientJobId] = useState<string | null>(null)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -206,16 +227,29 @@ export default function ScriptTimestampPage() {
       setErrorMsg('Please upload an audio file.')
       return
     }
-    const estimatedCredits = await estimateCredits('script_timestamp', { duration_seconds: 60, resolution: "1080p" })
-    const access = canUseTool(plan, remaining, 'script_timestamp', {}, estimatedCredits)
+    
+    const durationSeconds = audioDur || 60
+    
+    const estimatedCredits = await estimateCredits('script_timestamp', { duration_seconds: durationSeconds, resolution: "1080p" })
+    const access = canUseTool(plan, remaining, 'script_timestamp', { duration_seconds: durationSeconds, resolution: "1080p" }, estimatedCredits)
     if (!access.allowed) {
       setLimitModalReason(access.reason)
       setLimitModalRequiredPlan(access.requiredPlan)
       setLimitModalOpen(true)
       return
     }
+    const cjid = crypto.randomUUID()
+    setActiveClientJobId(cjid)
+
     if (user) {
-      await reserveCredits(user.id, estimatedCredits)
+      try {
+        await reserveCredits('script_timestamp', durationSeconds, estimatedCredits, cjid, { duration_seconds: durationSeconds, resolution: "1080p" })
+      } catch (err: any) {
+        setActiveClientJobId(null)
+        setLimitModalReason(err.message || 'Internet connection is required to verify credits before starting this export.')
+        setLimitModalOpen(true)
+        return
+      }
     }
     setStatus('transcribing')
     setErrorMsg('')
@@ -254,6 +288,10 @@ export default function ScriptTimestampPage() {
       const data = await res.json()
       setJobId(data.job_id)
     } catch (err: any) {
+      if (user) {
+        await finalizeJob(cjid, 'failed')
+        setActiveClientJobId(null)
+      }
       if (err.message && err.message.includes('Backend transcription failed')) {
         setErrorMsg('Backend transcription failed. Please check your audio file and try again.')
       } else {
@@ -275,6 +313,10 @@ export default function ScriptTimestampPage() {
           if (data.status === 'completed') {
             clearInterval(interval)
             const rep = data.timeline_report?.[0]
+            if (user && activeClientJobId) {
+              await finalizeJob(activeClientJobId, 'success')
+              setActiveClientJobId(null)
+            }
             if (rep) {
               setResult(rep)
               setStatus('done')
@@ -284,6 +326,10 @@ export default function ScriptTimestampPage() {
             }
           } else if (data.status === 'error') {
             clearInterval(interval)
+            if (user && activeClientJobId) {
+              await finalizeJob(activeClientJobId, 'failed')
+              setActiveClientJobId(null)
+            }
             const rawErr = String(data.errors?.[0] || '')
             if (rawErr.includes('KeyError') || rawErr.includes('formatting')) {
               setErrorMsg('Script Timestamp result formatting failed. Please check backend logs.')
@@ -297,6 +343,10 @@ export default function ScriptTimestampPage() {
             setStatus('error')
           } else if (data.status === 'cancelled') {
             clearInterval(interval)
+            if (user && activeClientJobId) {
+              await finalizeJob(activeClientJobId, 'cancelled')
+              setActiveClientJobId(null)
+            }
             setErrorMsg('Transcription cancelled.')
             setStatus('error')
           } else {
