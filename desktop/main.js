@@ -104,14 +104,95 @@ function showError(summary, detail = '') {
   if (mainWindow && !mainWindow.isDestroyed()) {
     const logPath = getLogFilePath();
     const errorHTML = `
-      <html>
-        <body style="background:#111;color:#ff6b6b;font-family:sans-serif;padding:2rem;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;">
-          <h2>SyncFrame Studio could not start.</h2>
-          <p>${summary}</p>
-          ${detail ? `<p style="color:#ccc;font-size:0.9em;max-width:700px;word-break:break-all;">${detail}</p>` : ''}
-          <p style="color:#888;font-size:0.8em;margin-top:2rem;">Log file: <code style="color:#aaa;">${logPath}</code></p>
-        </body>
-      </html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SyncFrame Studio Error</title>
+  <style>
+    body {
+      background: radial-gradient(circle at 50% 0%, #2a1015 0%, #15080b 60%, #050203 100%);
+      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      overflow: hidden;
+      padding: 2rem;
+    }
+    .panel {
+      position: relative;
+      z-index: 1;
+      background: rgba(30, 20, 25, 0.4);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 107, 107, 0.2);
+      border-radius: 24px;
+      padding: 40px 48px;
+      max-width: 600px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      text-align: center;
+      animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: rgba(255, 107, 107, 0.1);
+      border: 2px solid rgba(255, 107, 107, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 24px;
+      color: #ff6b6b;
+      font-size: 32px;
+      font-weight: bold;
+    }
+    h2 { margin: 0 0 12px 0; font-size: 24px; font-weight: 600; color: #ff6b6b; }
+    p { margin: 0 0 16px 0; color: #cbd5e1; line-height: 1.5; }
+    .detail {
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 12px;
+      padding: 16px;
+      color: #94a3b8;
+      font-size: 0.9em;
+      word-break: break-all;
+      width: 100%;
+      box-sizing: border-box;
+      margin-bottom: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      text-align: left;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .log-info { color: #64748b; font-size: 0.85em; margin: 0; }
+    code {
+      background: rgba(0,0,0,0.4);
+      padding: 4px 8px;
+      border-radius: 6px;
+      color: #94a3b8;
+      font-family: ui-monospace, monospace;
+    }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <div class="icon">!</div>
+    <h2>Startup Failed</h2>
+    <p>${summary}</p>
+    ${detail ? `<div class="detail">${detail}</div>` : ''}
+    <p class="log-info">Check log file for more details:<br/><br/><code>${logPath}</code></p>
+  </div>
+</body>
+</html>
     `;
     mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorHTML)}`);
   }
