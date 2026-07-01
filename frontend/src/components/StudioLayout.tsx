@@ -61,6 +61,7 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const { plan } = usePlan()
   const { remaining } = useCredits()
+  const [profileDropdownOpen, setProfileDropdownOpen] = useState(false)
 
   useEffect(() => {
     try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed)) } catch { /* noop */ }
@@ -186,86 +187,91 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
 
         {/* ── User Profile / Login Widget ── */}
         {isAuthenticated && user ? (
-          <div
-            className={`border-t px-2 py-2 ${collapsed ? 'flex justify-center' : ''}`}
-            style={{ borderColor: 'var(--border-subtle)' }}
-          >
-            {collapsed ? (
-              // Collapsed: just avatar bubble
-              <div
-                title={userLabel}
-                style={{
-                  width: 36, height: 36, borderRadius: '50%',
-                  background: 'linear-gradient(135deg,#06b6d4,#6366f1)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 13, fontWeight: 700, color: '#fff', flexShrink: 0,
-                  overflow: 'hidden', cursor: 'default',
-                }}
-              >
+          <div className={`relative border-t px-3 py-3 ${collapsed ? 'flex justify-center' : ''}`} style={{ borderColor: 'var(--border-subtle)' }}>
+            
+            {/* The clickable card */}
+            <button
+              onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
+              className={`flex items-center gap-2 w-full text-left rounded-xl transition-all duration-200 hover:bg-black/5 dark:hover:bg-white/5 ${collapsed ? 'justify-center p-1' : 'p-1.5'}`}
+            >
+              {/* Avatar */}
+              <div style={{
+                width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                background: 'linear-gradient(135deg,#06b6d4,#6366f1)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 12, fontWeight: 700, color: '#fff',
+                overflow: 'hidden', boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+              }}>
                 {user.avatarUrl
                   ? <img src={user.avatarUrl} alt={userInitial} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   : userInitial
                 }
               </div>
-            ) : (
-              // Expanded: avatar + name/email + logout button
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.375rem 0.5rem', borderRadius: 12 }}>
-                {/* Avatar */}
-                <div style={{
-                  width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-                  background: 'linear-gradient(135deg,#06b6d4,#6366f1)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 12, fontWeight: 700, color: '#fff',
-                  overflow: 'hidden',
-                }}>
-                  {user.avatarUrl
-                    ? <img src={user.avatarUrl} alt={userInitial} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : userInitial
-                  }
+
+              {!collapsed && (
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12px] font-bold text-[var(--text-primary)] truncate">{userLabel}</div>
+                  <div className="text-[10px] text-[var(--text-muted)] truncate">{plan?.display_name || 'Free Trial'}</div>
                 </div>
-                {/* Name / Email */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  {user.name && (
-                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {user.name}
+              )}
+            </button>
+
+            {/* The Dropdown Panel */}
+            {profileDropdownOpen && (
+              <>
+                <div className="fixed inset-0 z-[60]" onClick={() => setProfileDropdownOpen(false)} />
+                <div 
+                  className="absolute bottom-[110%] left-2 right-2 md:left-4 md:right-auto md:w-64 rounded-2xl z-[70] shadow-2xl animate-fade-in origin-bottom-left"
+                  style={{ 
+                    background: 'var(--bg-card)', 
+                    border: '1px solid var(--border-default)',
+                    backdropFilter: 'blur(20px)',
+                    WebkitBackdropFilter: 'blur(20px)'
+                  }}
+                >
+                  <div className="p-4 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+                    <div className="flex items-center gap-3 mb-3">
+                      <div style={{
+                        width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
+                        background: 'linear-gradient(135deg,#06b6d4,#6366f1)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 14, fontWeight: 700, color: '#fff',
+                        boxShadow: '0 4px 10px rgba(99,102,241,0.3)'
+                      }}>
+                        {user.avatarUrl ? <img src={user.avatarUrl} alt={userInitial} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : userInitial}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[14px] font-bold text-[var(--text-primary)] truncate">{user.name || userLabel}</div>
+                        <div className="text-[11px] text-[var(--text-muted)] truncate">{user.email || 'No email provided'}</div>
+                      </div>
                     </div>
-                  )}
-                  {user.email && (
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {user.email}
+                    
+                    <div className="flex flex-col gap-2 mt-2">
+                      <div className="flex justify-between items-center bg-black/5 dark:bg-white/5 p-2 rounded-lg">
+                        <PlanBadge />
+                        <a href={WEBSITE_URLS.ACCOUNT} target="_blank" rel="noopener noreferrer" className="text-[10px] uppercase font-bold text-[var(--accent-primary)] hover:text-white transition-colors">Manage</a>
+                      </div>
+                      <div className="bg-black/5 dark:bg-white/5 p-2 rounded-lg flex items-center justify-center">
+                        <CreditsBadge />
+                      </div>
                     </div>
-                  )}
-                  <div className="mt-1 flex flex-col gap-1 items-start">
-                    <PlanBadge />
-                    <CreditsBadge />
-                    <a
-                      href={WEBSITE_URLS.ACCOUNT}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[10px] uppercase font-bold tracking-wider mt-1 transition-colors"
-                      style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}
-                      onMouseEnter={e => e.currentTarget.style.color = '#fff'}
-                      onMouseLeave={e => e.currentTarget.style.color = 'var(--accent-primary)'}
+                  </div>
+
+                  <div className="p-2 flex flex-col">
+                    <button 
+                      onClick={() => { signOut(); setProfileDropdownOpen(false); }}
+                      className="w-full text-left px-3 py-2 text-[12px] font-medium text-[var(--color-error)] hover:bg-[var(--color-error-bg)] rounded-lg transition-colors flex items-center gap-2"
                     >
-                      Manage Plan
-                    </a>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                        <polyline points="16 17 21 12 16 7"/>
+                        <line x1="21" y1="12" x2="9" y2="12"/>
+                      </svg>
+                      Sign Out
+                    </button>
                   </div>
                 </div>
-                {/* Logout button */}
-                <button
-                  id="sidebar-logout-btn"
-                  onClick={signOut}
-                  title="Sign out"
-                  className="flex items-center justify-center rounded-lg transition-colors hover:bg-black/10 dark:hover:bg-white/10"
-                  style={{ width: 28, height: 28, color: 'var(--text-muted)', flexShrink: 0, border: '1px solid var(--border-subtle)' }}
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                    <polyline points="16 17 21 12 16 7"/>
-                    <line x1="21" y1="12" x2="9" y2="12"/>
-                  </svg>
-                </button>
-              </div>
+              </>
             )}
           </div>
         ) : (

@@ -82,12 +82,144 @@ function createWindow() {
   });
 
   const loadingHTML = `
-    <html>
-      <body style="background:#111;color:#eee;font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;">
-        <h1>Starting SyncFrame Studio...</h1>
-        <p id="status" style="color:#aaa;font-size:1.1em;margin-top:1rem;">Preparing local video engine...</p>
-      </body>
-    </html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Starting SyncFrame Studio</title>
+  <style>
+    body {
+      background: radial-gradient(circle at 50% 0%, #1e293b 0%, #0f172a 60%, #020617 100%);
+      color: #f8fafc;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      overflow: hidden;
+      user-select: none;
+    }
+    .glow {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 600px;
+      height: 600px;
+      transform: translate(-50%, -50%);
+      background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, rgba(0, 0, 0, 0) 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .panel {
+      position: relative;
+      z-index: 1;
+      background: rgba(30, 41, 59, 0.4);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 24px;
+      padding: 48px 56px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+      animation: slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    .logo-container {
+      width: 72px;
+      height: 72px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 24px;
+      box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.4), inset 0 2px 4px rgba(255,255,255,0.3);
+      position: relative;
+    }
+    .logo-container::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 24px;
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      filter: blur(12px);
+      opacity: 0.5;
+      z-index: -1;
+      animation: pulseGlow 3s ease-in-out infinite alternate;
+    }
+    .logo-mark {
+      width: 0;
+      height: 0;
+      border-top: 14px solid transparent;
+      border-bottom: 14px solid transparent;
+      border-left: 22px solid #ffffff;
+      margin-left: 6px;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+    }
+    h1 {
+      margin: 0 0 8px 0;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      background: linear-gradient(to right, #ffffff, #cbd5e1);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .subtitle {
+      color: #94a3b8;
+      font-size: 14px;
+      font-weight: 500;
+      margin: 0 0 32px 0;
+      letter-spacing: 0.01em;
+    }
+    .loader-container {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid rgba(99, 102, 241, 0.2);
+      border-top-color: #8b5cf6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 16px;
+    }
+    #status {
+      color: #cbd5e1;
+      font-size: 13px;
+      font-weight: 500;
+      margin: 0;
+      text-align: center;
+      transition: opacity 0.3s ease;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes slideUp { to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulseGlow { from { opacity: 0.3; transform: scale(0.95); } to { opacity: 0.6; transform: scale(1.05); } }
+  </style>
+</head>
+<body>
+  <div class="glow"></div>
+  <div class="panel">
+    <div class="logo-container">
+      <div class="logo-mark"></div>
+    </div>
+    <h1>SyncFrame Studio</h1>
+    <p class="subtitle">Initializing local rendering environment</p>
+    <div class="loader-container">
+      <div class="spinner"></div>
+      <p id="status">Preparing backend engine and studio services...</p>
+    </div>
+  </div>
+</body>
+</html>
   `;
   mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(loadingHTML)}`);
 }
@@ -378,7 +510,7 @@ async function startBackend() {
 
     // Give the user a helpful message if it's taking long
     if (attempt <= 30) {
-      updateLoadingStatus(`Starting backend engine... (${attempt}s)`);
+      updateLoadingStatus(`Preparing local render engine... (${attempt}s)`);
     } else {
       updateLoadingStatus(`First launch: macOS is verifying the backend engine... (${attempt}s — please wait)`);
     }
