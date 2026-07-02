@@ -406,7 +406,7 @@ export default function App() {
     if (!requireAuth()) return;
     if ((audioInputMode === 'single' ? !audioFile : !audioZip) || !imagesZip || !csvFile) return
 
-    const durationSeconds = audioDuration || 60
+    const durationSeconds = Math.max(1, Math.ceil(Number(audioDuration) || 60))
 
     const estimatedCredits = await estimateCredits('video_export', {
       resolution: settings.exportResolution,

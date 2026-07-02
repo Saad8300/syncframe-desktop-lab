@@ -228,7 +228,7 @@ export default function ScriptTimestampPage() {
       return
     }
     
-    const durationSeconds = audioDur || 60
+    const durationSeconds = Math.max(1, Math.ceil(Number(audioDur) || 60))
     
     const estimatedCredits = await estimateCredits('script_timestamp', { duration_seconds: durationSeconds, resolution: "1080p" })
     const access = canUseTool(plan, remaining, 'script_timestamp', { duration_seconds: durationSeconds, resolution: "1080p" }, estimatedCredits)

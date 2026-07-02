@@ -517,7 +517,7 @@ export default function VideoTimelinePage() {
     if (!requireAuth()) return
     if ((audioInputMode === 'single' ? !audioFile : !audioZip) || !videosZip || !csvFile) return
     
-    const durationSeconds = visualDur || audioDur || 60
+    const durationSeconds = Math.max(1, Math.ceil(Number(visualDur || audioDur) || 60))
     
     const estimatedCredits = await estimateCredits('video_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution || "1080p" })
     const access = canUseTool(plan, remaining, 'video_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution }, estimatedCredits)
@@ -571,7 +571,7 @@ export default function VideoTimelinePage() {
     try {
       const activeSettings: any = computeActiveSettings(settings);
       
-      const durationSeconds = visualDur || audioDur || 60
+      const durationSeconds = Math.max(1, Math.ceil(Number(visualDur || audioDur) || 60))
       cjid = crypto.randomUUID()
       const estimatedCredits = await estimateCredits('video_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution || "1080p" })
       

@@ -12,7 +12,7 @@ export interface UserCredits {
 
 export async function estimateCredits(tool: string, options: any): Promise<number> {
   // Client-side estimation (Backend actually strictly enforces the final minimum)
-  const dur = options.duration_seconds || 60
+  const dur = Math.max(1, Math.ceil(Number(options.duration_seconds) || 60))
   const is_batch = options.is_batch || false
   const num_videos = options.num_videos || 1
 
@@ -43,7 +43,10 @@ export async function reserveCredits(
   clientJobId: string,
   optionsJson: any = {}
 ): Promise<string> {
-  console.log(`[Credits] Reserving ${clientEstimatedCost} credits for job ${clientJobId} (${toolName})`)
+  const safeDurationSeconds = Math.max(1, Math.ceil(Number(durationSeconds) || 60))
+  const safeEstimatedCost = Math.max(1, Math.ceil(Number(clientEstimatedCost) || 1))
+
+  console.log(`[Credits] Reserving ${safeEstimatedCost} credits for job ${clientJobId} (${toolName})`)
   
   if (!supabase) {
     throw new Error('Supabase client not initialized');
@@ -52,14 +55,18 @@ export async function reserveCredits(
   const { data, error } = await supabase.rpc('reserve_credits', {
     p_client_job_id: clientJobId,
     p_tool_name: toolName,
-    p_duration_seconds: durationSeconds,
-    p_client_estimated_cost: clientEstimatedCost,
+    p_duration_seconds: safeDurationSeconds,
+    p_client_estimated_cost: safeEstimatedCost,
     p_options_json: optionsJson
   });
 
   if (error) {
     console.error('[Credits] Reservation failed:', error);
-    throw error;
+    // Suppress raw database syntax/connection errors from UI
+    if (error.message && (error.message.includes('invalid input syntax') || error.message.includes('fetch'))) {
+      throw new Error('Internet connection is required to verify credits before starting this export.')
+    }
+    throw new Error(error.message || 'Unable to verify credits. Please try again.')
   }
   
   window.dispatchEvent(new Event('syncframe:credits-updated'))

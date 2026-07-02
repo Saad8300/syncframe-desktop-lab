@@ -446,7 +446,7 @@ export default function MediaTimelinePage() {
     if (!requireAuth()) return
     if (!isReady) return
     
-    const durationSeconds = audioDur || 60
+    const durationSeconds = Math.max(1, Math.ceil(Number(audioDur) || 60))
     
     const estimatedCredits = await estimateCredits('media_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution })
     const access = canUseTool(plan, remaining, 'media_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution }, estimatedCredits)
@@ -512,7 +512,7 @@ export default function MediaTimelinePage() {
     try {
       const activeSettings: any = computeActiveSettings(settings);
       
-      const durationSeconds = audioDur || 60
+      const durationSeconds = Math.max(1, Math.ceil(Number(audioDur) || 60))
       cjid = crypto.randomUUID()
       const estimatedCredits = await estimateCredits('media_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution })
       
