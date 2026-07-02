@@ -45,10 +45,7 @@ if exist "backend\desktop_backend_launcher.spec" (
     del /Q "backend\desktop_backend_launcher.spec"
     echo [INFO] Removed backend\desktop_backend_launcher.spec
 )
-if exist "backend\syncframe-backend.spec" (
-    del /Q "backend\syncframe-backend.spec"
-    echo [INFO] Removed backend\syncframe-backend.spec
-)
+
 
 echo.
 echo [OK] Clean complete! (Source files and user data untouched)

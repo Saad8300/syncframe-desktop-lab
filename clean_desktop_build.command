@@ -56,8 +56,7 @@ info "Removed backend/__pycache__"
 rm -f backend/desktop_backend_launcher.spec
 info "Removed backend/desktop_backend_launcher.spec"
 
-rm -f backend/syncframe-backend.spec
-info "Removed backend/syncframe-backend.spec"
+
 
 success "Clean complete! (Source files untouched)"
 echo ""
