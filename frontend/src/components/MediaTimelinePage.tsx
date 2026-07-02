@@ -31,11 +31,12 @@ import { usePlan } from '../hooks/usePlan'
 import { useCredits } from '../hooks/useCredits'
 import { AccessLimitModal } from './billing/AccessLimitModal'
 import { estimateCredits, reserveCredits, finalizeJob } from '../lib/credits'
-import { canUseTool } from '../lib/plans'
+import { canUseTool, Plan } from '../lib/plans'
+import { parseTimelineCsv } from '../utils/timelineTimeParser'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const CSV_TEMPLATE = `start,end,asset,text\n0,5,1.png,"Opening image"\n5,10,1.mp4,"First video clip"\n10,15,2.jpg,"Second image"\n15,20,2.mp4,"Second video clip"\n20,25,,"Text-only screen"\n`
+const CSV_TEMPLATE = `start,end,asset,text\n0,5,1.png,"Opening image"\n5,10,1.mp4,"First video clip"\n00:10,00:15,2.jpg,"Timestamp image"\n15s,+5,2.mp4,"Relative end video"\n,+4,,"Text-only screen after previous row"\n`
 
 const DEFAULT_SETTINGS: MediaTimelineSettings = {
   aspectRatio:      '9:16',
@@ -320,6 +321,34 @@ export default function MediaTimelinePage() {
   const [audioZip,  setAudioZip]  = useState<File | null>(null)
   const [mediaZip, setMediaZip] = useState<File | null>(null)
   const [timelineCsv, setTimelineCsv] = useState<File | null>(null)
+  
+  const handleCsvUpload = async (file: File | null) => {
+    if (!file) {
+      setTimelineCsv(null);
+      return;
+    }
+    try {
+      const text = await file.text();
+      const result = parseTimelineCsv(text, 'media');
+      if (!result.success) {
+        alert("Invalid CSV:\n" + result.errors.join("\n"));
+        setTimelineCsv(null);
+        return;
+      }
+      
+      if (result.warnings && result.warnings.length > 0) {
+        alert("Warnings:\n" + result.warnings.join("\n"));
+      }
+      
+      const blob = new Blob([result.normalizedCsv], { type: 'text/csv' });
+      const newFile = new File([blob], file.name, { type: 'text/csv' });
+      setTimelineCsv(newFile);
+    } catch (err) {
+      alert("Failed to read CSV file.");
+      setTimelineCsv(null);
+    }
+  };
+
   const [introFile, setIntroFile] = useState<File | null>(null)
   const [outroFile, setOutroFile] = useState<File | null>(null)
   // Settings
@@ -632,7 +661,7 @@ export default function MediaTimelinePage() {
                   accept="text/csv,.csv"
                   icon={<IconFileText size={18} />}
                   file={timelineCsv}
-                  onChange={setTimelineCsv}
+                  onChange={handleCsvUpload}
                   required
                   disabled={disabled}
                 />
@@ -1027,21 +1056,34 @@ export default function MediaTimelinePage() {
 
             <div className="space-y-2">
               {[
-                { col: 'start', desc: 'Row start time (sec)', req: true },
-                { col: 'end',   desc: 'Row end time (sec)', req: true },
+                { col: 'start', desc: 'Row start time', req: true, help: 'Supports seconds, decimals, mm:ss, hh:mm:ss, 90s, 1m30s.\nBlank start can continue from previous row when end uses +duration.' },
+                { col: 'end',   desc: 'Row end time', req: true, help: 'Supports absolute time or relative +duration.\nExamples: 5, 00:05, 1:20, 90s, +5, +1m30s.' },
                 { col: 'asset', desc: 'Filename inside ZIP', req: false },
-                { col: 'text',  desc: 'Overlay or text-only screen', req: false },
-              ].map(({ col, desc, req }) => (
-                <div key={col} className="flex items-center gap-2">
-                  <code className="text-[11px] px-2 py-0.5 rounded font-mono font-semibold" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', color: 'var(--accent-primary)' }}>{col}</code>
-                  <span className="text-[11px]" style={{ color: 'var(--text-primary)' }}>{desc}</span>
-                  {req ? (
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded ml-auto" style={{ background: 'var(--color-error-bg)', color: 'var(--color-error)' }}>REQ</span>
-                  ) : (
-                    <span className="text-[9px] font-medium italic ml-auto" style={{ color: 'var(--text-muted)' }}>optional</span>
-                  )}
+                { col: 'text',  desc: 'Overlay text or text-only screen', req: false },
+              ].map(({ col, desc, req, help }) => (
+                <div key={col} className="flex flex-col gap-1 border-b border-[var(--border-subtle)] pb-2 last:border-0 last:pb-0">
+                  <div className="flex items-center gap-2">
+                    <code className="text-[11px] px-2 py-0.5 rounded font-mono font-semibold" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', color: 'var(--accent-primary)' }}>{col}</code>
+                    <span className="text-[11px]" style={{ color: 'var(--text-primary)' }}>{desc}</span>
+                    {req ? (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded ml-auto" style={{ background: 'var(--color-error-bg)', color: 'var(--color-error)' }}>REQ</span>
+                    ) : (
+                      <span className="text-[9px] font-medium italic ml-auto" style={{ color: 'var(--text-muted)' }}>optional</span>
+                    )}
+                  </div>
+                  {help && <p className="text-[10px] text-[var(--text-muted)] whitespace-pre-line ml-1">{help}</p>}
                 </div>
               ))}
+            </div>
+
+            <div className="pt-2">
+              <div className="p-2 rounded bg-[var(--bg-card)] border border-[var(--border-subtle)]">
+                <p className="text-[10px] font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Supported time formats:</p>
+                <ul className="list-disc pl-4 space-y-0.5 text-[9px] text-[var(--text-muted)]">
+                  <li>5, 5.5, 00:05, 1:20, 00:01:20, 90s, 1m30s</li>
+                  <li>+5, +1m30s (Use + in the end column to add from start. Example: start 00:10, end +5 means 10s to 15s)</li>
+                </ul>
+              </div>
             </div>
             
             <div className="pt-2">
@@ -1049,7 +1091,10 @@ export default function MediaTimelinePage() {
 {`start,end,asset,text
 0,5,1.png,"Opening image"
 5,10,1.mp4,"First video clip"
-10,15,,"Text-only screen"`}
+00:10,00:15,2.jpg,"Timestamp image"
+15s,+5,2.mp4,"Relative end video"
+,+4,,"Text-only screen after previous row"
+1m20s,1m25s,3.png,"Minute format"`}
               </pre>
             </div>
 

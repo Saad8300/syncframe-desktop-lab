@@ -198,8 +198,8 @@ def extract_videos_zip(zip_path: str, dest_dir: str) -> dict[str, str]:
 def parse_timeline_csv(
     csv_path: str,
     video_map: dict[str, str],
-) -> tuple[list[dict], list[str], list[str]]:
-    """Parse start,end,video CSV. Returns (rows, warnings, errors)."""
+) -> tuple[bool, list[dict], float, list[str], list[str], str]:
+    """Parse start,end,video CSV. Returns (success, rows, total_dur, errors, warnings, norm_csv)."""
     rows: list[dict] = []
     warnings: list[str] = []
     errors: list[str] = []
@@ -229,15 +229,26 @@ def parse_timeline_csv(
             continue
 
         try:
-            sv = float(start_str)
-        except ValueError:
+            from backend.timeline_time_parser import parse_time_to_seconds
+            sv_parsed = parse_time_to_seconds(start_str, allow_relative=False)
+            if sv_parsed is None:
+                errors.append(f"CSV row {i} has invalid start time: {start_str}")
+                continue
+            sv = float(sv_parsed)
+        except Exception:
             errors.append(f"CSV row {i} has invalid start time: {start_str}")
             continue
+            
         try:
-            ev = float(end_str)
-        except ValueError:
+            ev_parsed = parse_time_to_seconds(end_str, allow_relative=True)
+            if ev_parsed is None:
+                errors.append(f"CSV row {i} has invalid end time: {end_str}")
+                continue
+            ev = float(ev_parsed)
+        except Exception:
             errors.append(f"CSV row {i} has invalid end time: {end_str}")
             continue
+            
         if ev <= sv:
             errors.append(f"CSV row {i} end time must be greater than start time")
             continue
@@ -256,10 +267,10 @@ def parse_timeline_csv(
 
     if not rows and not errors:
         errors.append("CSV has no valid data rows.")
-        return rows, warnings, errors
+        return False, rows, 0.0, errors, warnings, ""
 
     if errors:
-        return rows, warnings, errors
+        return False, rows, 0.0, errors, warnings, ""
 
     rows.sort(key=lambda r: r["start"])
 
@@ -280,7 +291,17 @@ def parse_timeline_csv(
                 f"Black padding will be inserted."
             )
 
-    return rows, warnings, errors
+    # Format normalized_csv
+    out_csv_lines = ["start,end,video"]
+    for r in rows:
+        vid_name = r["video"]
+        if "," in vid_name or '"' in vid_name or "\n" in vid_name or "\r" in vid_name:
+            vid_name = f'"{vid_name.replace(chr(34), chr(34)+chr(34))}"'
+        out_csv_lines.append(f'{r["start"]},{r["end"]},{vid_name}')
+        
+    normalized_csv = "\n".join(out_csv_lines)
+    total_dur = rows[-1]["end"] if rows else 0.0
+    return True, rows, total_dur, errors, warnings, normalized_csv
 
 
 # ---------------------------------------------------------------------------
@@ -818,7 +839,7 @@ def generate_video_timeline(
 
         # ── Step 2: Parse CSV ─────────────────────────────────────────────────
         try:
-            rows, csv_warnings, csv_errors = parse_timeline_csv(csv_path, video_map)
+            success, rows, total_dur, csv_errors, csv_warnings, norm_csv = parse_timeline_csv(csv_path, video_map)
         except Exception as e:
             return {"success": False, "warnings": warnings_out,
                     "errors": [f"Failed to parse CSV: {e}"],

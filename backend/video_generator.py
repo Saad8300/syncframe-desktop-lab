@@ -576,7 +576,7 @@ def generate_video(
     # 2. Parse & validate CSV
     # ------------------------------------------------------------------
     _progress(20, "Reading CSV")
-    rows, csv_warnings, csv_errors = parse_and_validate_csv(csv_path)
+    success, rows, total_dur, csv_errors, csv_warnings, norm_csv = parse_and_validate_csv(csv_path)
     warnings.extend(csv_warnings)
     errors.extend(csv_errors)
     if csv_errors:

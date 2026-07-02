@@ -45,6 +45,7 @@ import type { GenerateSettings, GenerateResponse, GenerateStatus, JobStatus } fr
 import { checkHealth, startJob, createImageTimelineBatchJob } from './utils/api'
 import { loadSettings, applyThemeMode, applyAccentColor, saveSettings, AppSettings } from './utils/appSettings'
 import { consumePendingTemplate, saveTemplate } from './utils/templateStore'
+import { parseTimelineCsv } from './utils/timelineTimeParser'
 import { usePlan } from './hooks/usePlan'
 import { useCredits } from './hooks/useCredits'
 import { canUseTool, Plan } from './lib/plans'
@@ -322,6 +323,33 @@ export default function App() {
   // Optional files
   const [introFile,    setIntroFile]    = useState<File | null>(null)
   const [outroFile,    setOutroFile]    = useState<File | null>(null)
+
+  const handleCsvUpload = async (file: File | null) => {
+    if (!file) {
+      setCsvFile(null);
+      return;
+    }
+    try {
+      const text = await file.text();
+      const result = parseTimelineCsv(text, 'image');
+      if (!result.success) {
+        alert("Invalid CSV:\n" + result.errors.join("\n"));
+        setCsvFile(null);
+        return;
+      }
+      
+      if (result.warnings && result.warnings.length > 0) {
+        alert("Warnings:\n" + result.warnings.join("\n"));
+      }
+      
+      const blob = new Blob([result.normalizedCsv], { type: 'text/csv' });
+      const newFile = new File([blob], file.name, { type: 'text/csv' });
+      setCsvFile(newFile);
+    } catch (err) {
+      alert("Failed to read CSV file.");
+      setCsvFile(null);
+    }
+  };
   const [bgMusicFile,  setBgMusicFile]  = useState<File | null>(null)
 
   // Settings
@@ -825,7 +853,7 @@ export default function App() {
                           accept=".csv,text/csv"
                           icon={<IconFileText size={14} />}
                           file={csvFile}
-                          onChange={setCsvFile}
+                          onChange={handleCsvUpload}
                           disabled={isLoading}
                           required
                         />

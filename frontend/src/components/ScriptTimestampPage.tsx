@@ -331,14 +331,12 @@ export default function ScriptTimestampPage() {
               setActiveClientJobId(null)
             }
             const rawErr = String(data.errors?.[0] || '')
-            if (rawErr.includes('KeyError') || rawErr.includes('formatting')) {
-              setErrorMsg('Script Timestamp result formatting failed. Please check backend logs.')
-            } else if (rawErr.includes('WhisperModel') || rawErr.includes('compute_type') || rawErr.includes('OutOfMemory') || rawErr.includes('Failed to load')) {
-              setErrorMsg('Whisper model failed to load. Try a smaller model.')
-            } else if (rawErr) {
-              setErrorMsg('Unexpected Script Timestamp error. Check backend logs for details.')
+            if (rawErr.includes('WhisperModel') || rawErr.includes('Failed to load')) {
+              setErrorMsg('Whisper model failed to load. Try Base model.')
+            } else if (rawErr.includes('ffmpeg') || rawErr.includes('audio format')) {
+              setErrorMsg('Audio file could not be read. Try MP3 or WAV.')
             } else {
-              setErrorMsg('Backend transcription failed. Please check your audio file and try again.')
+              setErrorMsg('Timestamp generation failed. Credits were refunded.')
             }
             setStatus('error')
           } else if (data.status === 'cancelled') {

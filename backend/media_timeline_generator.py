@@ -291,7 +291,7 @@ def extract_media_zip(zip_path: str, dest_dir: str) -> dict[str, str]:
         
     return media_map
 
-def parse_media_csv(csv_path: str, media_map: dict[str, str]) -> tuple[list[dict], list[str], list[str]]:
+def parse_media_csv(csv_path: str, media_map: dict[str, str]) -> tuple[bool, list[dict], float, list[str], list[str], str]:
     rows: list[dict] = []
     warnings: list[str] = []
     errors: list[str] = []
@@ -302,7 +302,7 @@ def parse_media_csv(csv_path: str, media_map: dict[str, str]) -> tuple[list[dict
     reader = csv.DictReader(io.StringIO(content))
     if reader.fieldnames is None:
         errors.append("CSV is empty or has no header row.")
-        return rows, warnings, errors
+        return False, rows, 0.0, errors, warnings, ""
 
     lower_fields = [f.lower().strip() for f in reader.fieldnames]
     
@@ -344,14 +344,23 @@ def parse_media_csv(csv_path: str, media_map: dict[str, str]) -> tuple[list[dict
             continue
 
         try:
-            start_sec = float(s_str)
-        except ValueError:
+            from backend.timeline_time_parser import parse_time_to_seconds
+            start_parsed = parse_time_to_seconds(s_str, allow_relative=False)
+            if start_parsed is None:
+                errors.append(f"CSV row {idx} has invalid start time: {s_str}")
+                continue
+            start_sec = float(start_parsed)
+        except Exception:
             errors.append(f"CSV row {idx} has invalid start time: {s_str}")
             continue
             
         try:
-            end_sec   = float(e_str)
-        except ValueError:
+            end_parsed = parse_time_to_seconds(e_str, allow_relative=True)
+            if end_parsed is None:
+                errors.append(f"CSV row {idx} has invalid end time: {e_str}")
+                continue
+            end_sec = float(end_parsed)
+        except Exception:
             errors.append(f"CSV row {idx} has invalid end time: {e_str}")
             continue
 
@@ -393,7 +402,7 @@ def parse_media_csv(csv_path: str, media_map: dict[str, str]) -> tuple[list[dict
         })
 
     if errors:
-        return rows, warnings, errors
+        return False, rows, 0.0, errors, warnings, ""
 
     # Safe sorting
     parsed_raw_rows.sort(key=lambda r: r["start"])
@@ -436,8 +445,25 @@ def parse_media_csv(csv_path: str, media_map: dict[str, str]) -> tuple[list[dict
     if not any(r["type"] == "content" for r in rows):
         if not errors:
             errors.append("No valid content rows found in CSV.")
+            return False, rows, 0.0, errors, warnings, ""
 
-    return rows, warnings, errors
+    # Format normalized_csv
+    out_csv_lines = ["start,end,asset,text"]
+    for r in rows:
+        if r["type"] == "content":
+            asset_name = r["asset_name"]
+            if "," in asset_name or '"' in asset_name or "\n" in asset_name or "\r" in asset_name:
+                asset_name = f'"{asset_name.replace(chr(34), chr(34)+chr(34))}"'
+            
+            text_str = r["text"]
+            if "," in text_str or '"' in text_str or "\n" in text_str or "\r" in text_str:
+                text_str = f'"{text_str.replace(chr(34), chr(34)+chr(34))}"'
+                
+            out_csv_lines.append(f'{r["start"]},{r["end"]},{asset_name},{text_str}')
+            
+    normalized_csv = "\n".join(out_csv_lines)
+    total_dur = rows[-1]["end"] if rows else 0.0
+    return True, rows, total_dur, errors, warnings, normalized_csv
 
 # ---------------------------------------------------------------------------
 # Core Generator
@@ -499,7 +525,7 @@ def generate_media_timeline(
     check_cancel()
 
     report(10, "Parsing timeline CSV...")
-    rows, warnings, errors = parse_media_csv(csv_path, media_map)
+    success, rows, total_dur, warnings, errors, norm_csv = parse_media_csv(csv_path, media_map)
     if errors:
         return {"success": False, "warnings": warnings, "errors": errors, "timeline": []}
         

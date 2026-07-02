@@ -10,6 +10,9 @@ import os
 import tempfile
 import re
 import math
+import subprocess
+import json
+import shutil
 from pathlib import Path
 from typing import Callable, List, Optional, Dict, Any
 
@@ -310,6 +313,103 @@ def _split_segment(seg: dict, num_parts: int, split_on_punct: bool) -> list:
     return result if result else [seg]
 
 
+def post_process_timestamp_segments(
+    segments: list,
+    options: dict
+) -> list:
+    """
+    Post-processes segments: sorts, clamps, merges tiny segments, and closes gaps.
+    options:
+      - mode: str
+      - intensity: str
+      - audioDuration: float
+    """
+    if not segments:
+        return []
+
+    mode = options.get("mode", "standard")
+    intensity = options.get("intensity", "detailed")
+    audio_duration = options.get("audioDuration", 0.0)
+
+    # 2. Sort by start time
+    processed = sorted(segments, key=lambda x: x["start"])
+
+    # 3. Clamp invalid values
+    for s in processed:
+        s["start"] = max(0.0, s["start"])
+        s["end"] = min(audio_duration + 0.1, max(s["start"] + 0.1, s["end"]))
+
+    is_visual_mode = mode in ["visual_beat", "csv", "image_timeline_csv", "media_timeline_csv", "video_timeline_csv"]
+
+    # 4. Merge very short segments (under 1.25s roughly depending on intensity)
+    if is_visual_mode:
+        if intensity == "light":
+            short_thresh = 1.5
+        elif intensity == "normal":
+            short_thresh = 1.25
+        else:
+            short_thresh = 1.0
+
+        merged = []
+        skip_next = False
+        for i in range(len(processed)):
+            if skip_next:
+                skip_next = False
+                continue
+
+            curr = processed[i]
+            dur = curr["end"] - curr["start"]
+
+            if dur < short_thresh:
+                # try merge with next
+                if i + 1 < len(processed):
+                    nxt = processed[i+1]
+                    gap_to_next = nxt["start"] - curr["end"]
+                    if gap_to_next <= 0.75:
+                        curr["end"] = max(curr["end"], nxt["end"])
+                        curr["text"] = curr["text"].strip() + " " + nxt["text"].strip()
+                        merged.append(curr)
+                        skip_next = True
+                        continue
+                        
+                # merge with previous if possible
+                if merged:
+                    prev = merged[-1]
+                    gap_to_prev = curr["start"] - prev["end"]
+                    if gap_to_prev <= 0.75:
+                        prev["end"] = max(prev["end"], curr["end"])
+                        prev["text"] = prev["text"].strip() + " " + curr["text"].strip()
+                        continue
+                        
+                merged.append(curr)
+            else:
+                merged.append(curr)
+        processed = merged
+
+    # 5. Handle small gaps and overlaps
+    gap_thresh = 0.75
+    for i in range(len(processed) - 1):
+        curr = processed[i]
+        nxt = processed[i+1]
+        gap = nxt["start"] - curr["end"]
+
+        if is_visual_mode and 0 < gap <= gap_thresh:
+            # Close gap safely by setting next start = previous end
+            nxt["start"] = curr["end"]
+        elif gap < 0:
+            # Overlap! Fix overlap by setting curr end to nxt start
+            curr["end"] = nxt["start"]
+            if curr["end"] <= curr["start"]:
+                curr["end"] = curr["start"] + 0.05 # safety push
+
+    # Final clamp and overlap safety pass
+    for i in range(len(processed)):
+        if i < len(processed) - 1 and processed[i]["end"] > processed[i+1]["start"]:
+            processed[i]["end"] = processed[i+1]["start"]
+        processed[i]["end"] = min(audio_duration + 0.1, max(processed[i]["start"] + 0.05, processed[i]["end"]))
+
+    return processed
+
 # ---------------------------------------------------------------------------
 # Core transcription function
 # ---------------------------------------------------------------------------
@@ -337,9 +437,42 @@ def transcribe_audio_backend(
         raise RuntimeError("faster-whisper is not installed. Please run backend setup.")
 
     if progress_callback:
+        progress_callback("Validating and preparing audio…", 5)
+
+    if not os.path.exists(audio_path):
+        raise FileNotFoundError(f"Audio file not found: {audio_path}")
+
+    # Process audio with ffmpeg: 16kHz, mono, wav format
+    processed_audio_path = os.path.join(tempfile.gettempdir(), f"processed_{os.path.basename(audio_path)}.wav")
+    try:
+        subprocess.run([
+            "ffmpeg", "-y", "-i", audio_path,
+            "-ac", "1", "-ar", "16000", "-f", "wav", processed_audio_path
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError:
+        raise RuntimeError("Failed to process audio with ffmpeg. Make sure the file is a valid audio format.")
+    except FileNotFoundError:
+        logger.warning("ffmpeg not found in PATH, skipping audio pre-processing. May affect transcription accuracy.")
+        processed_audio_path = audio_path
+
+    # Get duration using ffprobe
+    true_duration = 0.0
+    try:
+        probe_res = subprocess.run([
+            "ffprobe", "-v", "error", "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1", processed_audio_path
+        ], capture_output=True, text=True, check=True)
+        true_duration = float(probe_res.stdout.strip())
+    except Exception as e:
+        logger.warning(f"Could not probe duration with ffprobe: {e}")
+
+    if progress_callback:
         progress_callback("Loading AI model…", 10)
 
     # Initialize model (cpu int8 is very fast and safe for all machines)
+    if model_name not in ["tiny", "base", "small", "medium"]:
+        model_name = "base"
+        
     if model_name not in _model_cache:
         logger.info(f"Loading faster-whisper model '{model_name}'...")
         _model_cache[model_name] = WhisperModel(model_name, device="cpu", compute_type="int8")
@@ -351,27 +484,38 @@ def transcribe_audio_backend(
 
     # Transcribe
     segments_gen, info = model.transcribe(
-        audio_path,
+        processed_audio_path,
         language=language,
         vad_filter=True,
         beam_size=5
     )
 
+    if true_duration == 0.0:
+        true_duration = info.duration
+
     raw_segments = []
     for i, segment in enumerate(segments_gen):
+        start_t = max(0.0, segment.start)
+        end_t = min(true_duration, segment.end)
+        
+        if end_t <= start_t:
+            continue
+            
         raw_segments.append({
-            "start": segment.start,
-            "end": segment.end,
+            "start": start_t,
+            "end": end_t,
             "text": segment.text.strip(),
         })
         if progress_callback and i % 5 == 0:
-            # We don't know total segments, so we just pulse progress
-            progress_callback(f"Transcribing… ({seconds_to_ts(segment.end)})", min(90, 20 + i))
+            progress_callback(f"Transcribing… ({seconds_to_ts(end_t)})", min(90, 20 + i))
 
     if not raw_segments:
+        if processed_audio_path != audio_path:
+            try: os.remove(processed_audio_path)
+            except Exception: pass
         raise ValueError("Transcription returned no text. The audio might be silent or too noisy.")
         
-    duration = info.duration
+    duration = true_duration
     
     # Optional Script Alignment
     original_script_used = False
@@ -394,9 +538,23 @@ def transcribe_audio_backend(
         advanced=advanced_settings
     )
 
+    # Post processing
+    final_segments = post_process_timestamp_segments(
+        final_segments,
+        options={
+            "mode": output_style if output_style != "standard" else "csv",
+            "intensity": segmentation_intensity,
+            "audioDuration": duration
+        }
+    )
+
     avg_len = 0
     if final_segments:
         avg_len = sum(s["end"] - s["start"] for s in final_segments) / len(final_segments)
+
+    if processed_audio_path != audio_path:
+        try: os.remove(processed_audio_path)
+        except Exception: pass
 
     return {
         "segments": final_segments,

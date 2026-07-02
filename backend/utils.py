@@ -37,34 +37,16 @@ def make_clean_filename(raw_name: str, default_name: str = "output", extension: 
 # Time parsing helpers
 # ---------------------------------------------------------------------------
 
+from timeline_time_parser import parse_time_to_seconds
+
 def parse_time(time_str: str) -> float:
     """
-    Parse various time formats into seconds (float).
-
-    Supported formats:
-        MM:SS           -> "00:02"
-        MM:SS.mmm       -> "00:01.500"
-        HH:MM:SS        -> "00:00:02"
-        HH:MM:SS.mmm    -> "00:00:02.500"
+    Deprecated wrapper around parse_time_to_seconds for legacy support.
     """
-    time_str = str(time_str).strip()
-
-    # HH:MM:SS or HH:MM:SS.mmm
-    m = re.fullmatch(r"(\d+):(\d{2}):(\d{2})(?:\.(\d+))?", time_str)
-    if m:
-        h, mn, s = int(m.group(1)), int(m.group(2)), int(m.group(3))
-        ms = float(f"0.{m.group(4)}") if m.group(4) else 0.0
-        return h * 3600 + mn * 60 + s + ms
-
-    # MM:SS or MM:SS.mmm
-    m = re.fullmatch(r"(\d+):(\d{2})(?:\.(\d+))?", time_str)
-    if m:
-        mn, s = int(m.group(1)), int(m.group(2))
-        ms = float(f"0.{m.group(3)}") if m.group(3) else 0.0
-        return mn * 60 + s + ms
-
-    raise ValueError(f"Cannot parse time string: '{time_str}'")
-
+    res = parse_time_to_seconds(time_str, allow_relative=False)
+    if res is None:
+        raise ValueError(f"Cannot parse time string: '{time_str}'")
+    return res
 
 def seconds_to_mmss(seconds: float) -> str:
     """Format seconds as MM:SS.mmm"""
@@ -116,7 +98,7 @@ def get_resolution(aspect_ratio: str, export_resolution: str) -> tuple[int, int]
 # CSV parsing & validation
 # ---------------------------------------------------------------------------
 
-def parse_and_validate_csv(csv_path: str) -> tuple[list[dict], list[str], list[str]]:
+def parse_and_validate_csv(csv_path: str) -> tuple[bool, list[dict], float, list[str], list[str], str]:
     """
     Load the timestamp CSV and return (rows, warnings, errors).
 
@@ -131,7 +113,7 @@ def parse_and_validate_csv(csv_path: str) -> tuple[list[dict], list[str], list[s
         df = pd.read_csv(csv_path)
     except Exception as e:
         errors.append(f"Failed to read CSV: {e}")
-        return rows, warnings, errors
+        return False, rows, 0.0, errors, warnings, ""
 
     # Normalise column names
     df.columns = [c.strip().lower() for c in df.columns]
@@ -140,7 +122,7 @@ def parse_and_validate_csv(csv_path: str) -> tuple[list[dict], list[str], list[s
     missing_cols = required - set(df.columns)
     if missing_cols:
         errors.append(f"CSV is missing required columns: {', '.join(missing_cols)}")
-        return rows, warnings, errors
+        return False, rows, 0.0, errors, warnings, ""
 
     if "text" not in df.columns:
         df["text"] = ""
@@ -198,7 +180,25 @@ def parse_and_validate_csv(csv_path: str) -> tuple[list[dict], list[str], list[s
                 f"and '{curr['image']}' (starts {seconds_to_mmss(curr['start'])})"
             )
 
-    return rows, warnings, errors
+    if errors:
+        return False, rows, 0.0, errors, warnings, ""
+
+    # Format normalized_csv
+    out_csv_lines = ["image,start,end,text"]
+    for r in rows:
+        img_name = r["image"]
+        if "," in img_name or '"' in img_name or "\n" in img_name or "\r" in img_name:
+            img_name = f'"{img_name.replace(chr(34), chr(34)+chr(34))}"'
+            
+        text_str = r["text"]
+        if "," in text_str or '"' in text_str or "\n" in text_str or "\r" in text_str:
+            text_str = f'"{text_str.replace(chr(34), chr(34)+chr(34))}"'
+            
+        out_csv_lines.append(f'{img_name},{r["start"]},{r["end"]},{text_str}')
+        
+    normalized_csv = "\n".join(out_csv_lines)
+    total_dur = rows[-1]["end"] if rows else 0.0
+    return True, rows, total_dur, errors, warnings, normalized_csv
 
 
 # ---------------------------------------------------------------------------
