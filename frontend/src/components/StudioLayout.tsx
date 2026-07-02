@@ -59,7 +59,7 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
   const { user, isAuthenticated, signOut, setAuthModalOpen } = useAuth()
   const { requireAuth } = useAuth()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const { plan } = usePlan()
+  const { plan, loading: planLoading } = usePlan()
   const { remaining } = useCredits()
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false)
 
@@ -209,9 +209,11 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
               </div>
 
               {!collapsed && (
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 text-left">
                   <div className="text-[12px] font-bold text-[var(--text-primary)] truncate">{userLabel}</div>
-                  <div className="text-[10px] text-[var(--text-muted)] truncate">{plan?.display_name || 'Free Trial'}</div>
+                  <div className="text-[10px] text-[var(--text-muted)] truncate">
+                    {planLoading && plan?.id === 'free' ? 'Checking plan...' : (plan?.display_name || 'Free Trial')}
+                  </div>
                 </div>
               )}
             </button>

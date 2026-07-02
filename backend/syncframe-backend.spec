@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, collect_data_files
 from PyInstaller.utils.hooks import copy_metadata
 
 datas = []
@@ -10,14 +10,15 @@ datas += copy_metadata('imageio-ffmpeg')
 datas += copy_metadata('moviepy')
 datas += copy_metadata('decorator')
 datas += copy_metadata('proglog')
-from PyInstaller.utils.hooks import collect_data_files
-
 tmp_ret = collect_all('imageio')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('imageio_ffmpeg')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
 tmp_ret = collect_all('faster_whisper')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+datas += tmp_ret[0]
+binaries += tmp_ret[1]
+hiddenimports += tmp_ret[2]
 datas += collect_data_files('faster_whisper')
 
 

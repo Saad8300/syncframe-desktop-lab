@@ -226,7 +226,7 @@ export type ViewMode = 'landing' | 'tools' | 'dashboard' | 'history' | 'template
 
 export default function App() {
   const { user, isAuthenticated, loading: authLoading, requireAuth } = useAuth()
-  const { plan } = usePlan()
+  const { plan, loading: planLoading } = usePlan()
   const { remaining } = useCredits()
 
   // ── Auth: login gate ─────────────────────────────────────────────────────────
@@ -446,7 +446,7 @@ export default function App() {
       resolution: settings.exportResolution,
       is_premium_template: false,
       duration_seconds: durationSeconds
-    }, estimatedCredits)
+    }, estimatedCredits, planLoading)
 
     if (!access.allowed) {
       setLimitModalReason(access.reason)
@@ -496,7 +496,7 @@ export default function App() {
     const access = canUseTool(plan, remaining, 'batch_video', {
       resolution: settings.exportResolution,
       is_batch: true
-    })
+    }, 0, planLoading)
     if (!access.allowed) {
       setLimitModalReason(access.reason)
       setLimitModalRequiredPlan(access.requiredPlan)

@@ -155,7 +155,7 @@ const UPCOMING_TOOLS: {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function StudioToolsPage({ onSelectTool }: Props) {
-  const { plan } = usePlan()
+  const { plan, loading: planLoading } = usePlan()
   const { remaining } = useCredits()
 
   // Access Limit Modal state
@@ -164,7 +164,7 @@ export default function StudioToolsPage({ onSelectTool }: Props) {
   const [limitModalRequiredPlan, setLimitModalRequiredPlan] = useState<string | undefined>(undefined)
 
   const handleSelectTool = (toolId: ViewMode) => {
-    const access = canUseTool(plan, remaining, toolId, { is_batch: toolId === 'batch_video' })
+    const access = canUseTool(plan, remaining, toolId, { is_batch: toolId === 'batch_video' }, 0, planLoading)
     if (!access.allowed) {
       setLimitModalReason(access.reason)
       setLimitModalRequiredPlan(access.requiredPlan)
@@ -191,13 +191,15 @@ export default function StudioToolsPage({ onSelectTool }: Props) {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
           {ACTIVE_TOOLS.map(tool => {
-            const access = canUseTool(plan, remaining, tool.id, { is_batch: tool.id === 'batch_video' })
+            const access = canUseTool(plan, remaining, tool.id, { is_batch: tool.id === 'batch_video' }, 0, planLoading)
+            const isCheckingPlan = !access.allowed && access.reason === 'Checking plan...'
             return (
               <ActiveToolCard
                 key={tool.id}
                 tool={tool}
                 onClick={() => handleSelectTool(tool.id)}
-                isLocked={!access.allowed}
+                isLocked={!access.allowed && !isCheckingPlan}
+                isCheckingPlan={isCheckingPlan}
                 requiredPlan={access.requiredPlan}
               />
             )
@@ -238,11 +240,13 @@ function ActiveToolCard({
   tool,
   onClick,
   isLocked,
+  isCheckingPlan,
   requiredPlan
 }: {
   tool: typeof ACTIVE_TOOLS[number]
   onClick: () => void
   isLocked: boolean
+  isCheckingPlan?: boolean
   requiredPlan?: string
 }) {
   const [hovered, setHovered] = useState(false)
@@ -278,7 +282,7 @@ function ActiveToolCard({
             transform: hovered && !isLocked ? 'scale(1.08)' : 'scale(1)',
           }}
         >
-          {isLocked ? <IconLock size={18} /> : tool.icon}
+          {isCheckingPlan ? <div className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: 'var(--text-muted)', borderTopColor: 'transparent' }} /> : isLocked ? <IconLock size={18} /> : tool.icon}
         </div>
         {requiredPlan && (
           <PlanBadge planId={requiredPlan.toLowerCase()} size="sm" />
@@ -296,9 +300,13 @@ function ActiveToolCard({
 
       <div
         className="flex items-center gap-1.5 text-xs font-semibold transition-all duration-200"
-        style={{ color: hovered ? tool.accentColor : 'var(--text-muted)' }}
+        style={{ color: hovered && !isCheckingPlan ? tool.accentColor : 'var(--text-muted)' }}
       >
-        Open tool <IconArrowRight size={12} />
+        {isCheckingPlan ? 'Checking plan...' : (
+          <>
+            Open tool <IconArrowRight size={12} />
+          </>
+        )}
       </div>
     </button>
   )

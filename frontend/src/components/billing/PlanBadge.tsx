@@ -9,8 +9,9 @@ interface PlanBadgeProps {
 export function PlanBadge({ planId, size = 'md' }: PlanBadgeProps) {
   const { plan, loading } = usePlan()
 
-  if (loading && !planId) {
-    return <div className="h-5 w-16 bg-[var(--bg-input)] rounded animate-pulse" />
+  // If loading and we have no cached plan (fallback free), show a subtle loader
+  if (loading && !planId && plan?.id === 'free') {
+    return <div className="h-5 w-16 bg-[var(--bg-input)] rounded animate-pulse inline-flex items-center justify-center text-[10px] text-[var(--text-secondary)]">...</div>
   }
 
   const displayName = planId ? (planId.charAt(0).toUpperCase() + planId.slice(1)) : (plan?.display_name || 'Free Trial')

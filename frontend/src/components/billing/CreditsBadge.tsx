@@ -7,8 +7,10 @@ export function CreditsBadge() {
   const { credits, remaining, loading: loadingCredits } = useCredits()
   const { plan, loading: loadingPlan } = usePlan()
 
-  if (loadingCredits || loadingPlan) {
-    return <div className="h-5 w-20 bg-[var(--bg-input)] rounded animate-pulse" />
+  const isHydrated = (plan && plan.id !== 'free') || (!loadingPlan && !loadingCredits);
+  
+  if ((loadingCredits || loadingPlan) && !isHydrated) {
+    return <div className="h-5 w-20 bg-[var(--bg-input)] rounded animate-pulse inline-flex items-center justify-center text-[10px] text-[var(--text-secondary)]">...</div>
   }
 
   const total = plan?.monthly_credits || credits?.monthly_allocation || 30

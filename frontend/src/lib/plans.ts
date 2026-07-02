@@ -71,8 +71,21 @@ export function canUseTool(
   credits: number,
   tool: string,
   requestedOptions: { duration_seconds?: number, resolution?: string, is_premium_template?: boolean, is_batch?: boolean } = {},
-  estimatedCredits: number = 0
+  estimatedCredits: number = 0,
+  planLoading: boolean = false
 ): ToolAccessResult {
+  if (planLoading && (!plan || plan.id === 'free')) {
+    return {
+      allowed: false,
+      reason: 'Checking plan...',
+      requiredCredits: estimatedCredits,
+      upgradeRequired: false,
+      planLimitExceeded: false,
+      limitType: 'plan',
+      suggestedFix: 'Please wait while we verify your plan.'
+    }
+  }
+
   const currentPlan = plan || FALLBACK_FREE_PLAN
   const limits = currentPlan.limits
   
