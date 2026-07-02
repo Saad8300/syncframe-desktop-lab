@@ -22,6 +22,20 @@ from audio_helpers import prepare_single_audio, prepare_zip_audio
 
 logger = logging.getLogger(__name__)
 
+def _get_batch_media_duration(filepath: str):
+    import subprocess
+    try:
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            filepath
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        return float(res.stdout.strip())
+    except:
+        return None
+
 def safe_rmtree(path, *args, **kwargs):
     kwargs.pop("ignore_errors", None)
     if not os.path.exists(path):
@@ -333,14 +347,27 @@ def _process_job(job: Dict[str, Any]):
             
         # Success! Save to history
         try:
+            duration = _get_batch_media_duration(output_path)
+            if not duration:
+                duration = config.get("duration_seconds")
+
+            tool_name = config.get("credit_tool_name", "batch_video_generator")
+            labels = {
+                "image_timeline": "Image Timeline (Batch)",
+                "video_timeline": "Video Timeline (Batch)",
+                "media_timeline": "Media Timeline (Batch)",
+                "batch_video_generator": "Batch Video Generator"
+            }
+            tool_label = labels.get(tool_name, "Batch Video Generator")
+
             history_store.add_history(
-                tool="batch_video_generator",
-                tool_label="Batch Video Generator",
+                tool=tool_name,
+                tool_label=tool_label,
                 output_name=output_filename,
                 output_type="video",
                 output_url=f"/outputs/{output_filename}",
                 file_extension="mp4",
-                duration_seconds=res.get("duration", 0),
+                duration_seconds=duration,
                 file_size_bytes=file_size,
                 resolution=config.get("export_resolution", "1080p"),
                 aspect_ratio=config.get("aspect_ratio", "9:16"),
@@ -350,7 +377,7 @@ def _process_job(job: Dict[str, Any]):
                     "source_tool": source_tool,
                     "generated_via": "batch_queue"
                 },
-                credit_cost=config.get("credit_cost", None)
+                credit_cost=config.get("credit_cost")
             )
         except Exception as he:
             logger.error(f"Failed to save batch history: {he}")

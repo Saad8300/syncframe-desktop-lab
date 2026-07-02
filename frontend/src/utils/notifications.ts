@@ -70,7 +70,7 @@ function showDesktopNotification(title: string, body?: string) {
 }
 
 // The core trigger function
-export function triggerNotification(
+function triggerNotification(
   type: ToastType,
   title: string,
   message?: string,

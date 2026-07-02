@@ -35,6 +35,9 @@
   "text_overlay_background_opacity": 50.0,
   "text_overlay_mode": "whole_video",
   "text_overlay_items": "[]",
-  "cjid": "453a235b-55a4-4be6-805f-d2272ac05827",
-  "credit_cost": 10
+  "cjid": "1586803f-6e6e-4017-99f3-3f2d617fb274",
+  "credit_cost": 10.0,
+  "credit_reserved": true,
+  "credit_tool_name": "video_export",
+  "duration_seconds": 73.0
 }

@@ -5,7 +5,7 @@ import { IconZap } from '../icons'
 
 export function CreditsBadge() {
   const { credits, remaining, loading: loadingCredits } = useCredits()
-  const { plan, loading: loadingPlan } = usePlan()
+  const { plan, subscription, loading: loadingPlan } = usePlan()
 
   const isHydrated = (plan && plan.id !== 'free') || (!loadingPlan && !loadingCredits);
   
@@ -17,12 +17,17 @@ export function CreditsBadge() {
   const isFreeTrial = !plan || plan.id === 'free' || plan.id === 'free_trial';
   
   let resetDateStr = ''
-  if (!isFreeTrial && credits?.next_credit_reset_at) {
+  const isPaid = plan && plan.id !== 'free'
+  const dStr = credits?.next_reset_at || subscription?.current_period_end
+  if (dStr) {
     try {
-      resetDateStr = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(credits.next_credit_reset_at))
+      const formatted = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(dStr))
+      resetDateStr = isPaid ? `Credits renew: ${formatted}` : `Trial credits expire when used`
     } catch (e) {
       // Ignore
     }
+  } else if (!isPaid) {
+    resetDateStr = 'Trial credits do not renew'
   }
 
   return (
@@ -38,8 +43,8 @@ export function CreditsBadge() {
         <span className="truncate">{remaining.toLocaleString()} / {total.toLocaleString()} {isFreeTrial ? 'trial credits' : 'monthly credits'}</span>
       </div>
       {resetDateStr && (
-        <div className="text-[9px] text-[var(--text-muted)] text-center px-1">
-          Resets on {resetDateStr}
+        <div className="text-[9px] text-[var(--text-muted)] text-center px-1 font-medium">
+          {resetDateStr}
         </div>
       )}
     </div>

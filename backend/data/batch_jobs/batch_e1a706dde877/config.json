@@ -1,12 +1,12 @@
 {
   "audio_input_mode": "single",
   "aspect_ratio": "9:16",
-  "export_resolution": "720p",
+  "export_resolution": "1080p",
   "fit_mode": "cover",
   "transition": "none",
   "transition_duration": 0.5,
   "zoom_effect": "none",
-  "render_profile": "fast_preview",
+  "render_profile": "balanced",
   "output_name": "my_video",
   "motion_effect": "none",
   "motion_intensity": "medium",
@@ -35,6 +35,9 @@
   "text_overlay_background_opacity": 50.0,
   "text_overlay_mode": "whole_video",
   "text_overlay_items": "[]",
-  "cjid": "4d50e0c6-e192-480e-8b5c-f538ab95e9cc",
-  "credit_cost": 10
+  "cjid": "21f2933e-3131-4d3a-aeba-a2911888feba",
+  "credit_cost": 20.0,
+  "credit_reserved": true,
+  "credit_tool_name": "video_export",
+  "duration_seconds": 73.0
 }

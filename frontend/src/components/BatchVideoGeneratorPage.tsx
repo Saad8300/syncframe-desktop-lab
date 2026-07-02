@@ -11,7 +11,7 @@ import {
   getBatchJobs, getBatchStats, deleteBatchJob,
   clearCompletedBatchJobs, clearFailedBatchJobs, clearCancelledBatchJobs, clearAllBatchJobs,
   moveBatchJobUp, moveBatchJobDown, duplicateBatchJob,
-  getBatchState, startBatchQueue,
+  getBatchState, startBatchQueue, startBatchQueueWithValidation,
   pauseBatchAfterCurrent, stopBatchQueue, retryFailedBatchJobs,
   retryBatchJob, BatchState
 , resolveBackendUrl} from '../utils/api'
@@ -169,22 +169,12 @@ export default function BatchVideoGeneratorPage() {
   const handleStartQueue = async () => {
     if (!requireAuth()) return
 
-    const pendingJobs = jobs.filter((j: any) => j.status === 'queued' || j.status === 'failed') || []
-    
-    if (user) {
-      const missingCjid = pendingJobs.some((j: any) => !j.config?.cjid)
-      if (missingCjid) {
-        dispatchToast('info', 'Notice', String("Some queued jobs are missing credit reservations. Please remove and re-add them."))
-        return
-      }
-    }
-
     setIsQueueLoading(true)
     try { 
-      await startBatchQueue(); 
+      await startBatchQueueWithValidation(); 
       await loadData() 
-    } catch (e) { 
-      dispatchToast('info', 'Notice', String("Start failed: " + e)) 
+    } catch (e: any) { 
+      dispatchToast('info', 'Notice', String(e.message || e)) 
     } 
     finally { setIsQueueLoading(false) }
   }

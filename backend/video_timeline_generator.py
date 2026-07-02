@@ -1161,7 +1161,6 @@ def generate_video_timeline(
             else:
                 logger.info("Final clip has audio: true")
                 logger.info(f"Final visual duration: {final_video.duration:.2f}s, Final audio duration: {final_video.audio.duration:.2f}s")
-                final_duration = final_video.duration
             final_video.write_videofile(
                 output_path,
                 fps=fps,
@@ -1199,7 +1198,6 @@ def generate_video_timeline(
             "errors":    errors_out,
             "timeline":  timeline_out,
             "cancelled": False,
-            "duration":  final_duration if 'final_duration' in locals() else 0,
             "visual_duration": visual_dur_final,
             "audio_duration": audio_dur_final,
         }

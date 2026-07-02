@@ -5,6 +5,7 @@ import React, { useState } from 'react'
 import { BUILT_IN_PRESETS, detectActivePreset } from '../utils/presets'
 import { useSavedPresets } from '../hooks/useSavedPresets'
 import { usePlan } from '../hooks/usePlan'
+import { normalizePlanId } from '../lib/plans'
 import { AccessLimitModal } from './billing/AccessLimitModal'
 import type { ExportPreset, PresetId } from '../utils/presets'
 import type { SavedPreset } from '../hooks/useSavedPresets'
@@ -54,16 +55,17 @@ function Badge({ children, accent }: { children: React.ReactNode; accent?: boole
 }
 
 const PLAN_TIERS: Record<string, number> = {
-  'Free Trial': 0,
-  'Standard': 1,
-  'Pro': 2,
-  'Ultra': 3,
+  'free': 0,
+  'free trial': 0,
+  'starter': 1,
+  'pro': 2,
+  'agency': 3,
 }
 
 function hasRequiredPlan(currentPlan: string, requiredPlan?: string) {
   if (!requiredPlan) return true
-  const currentLevel = PLAN_TIERS[currentPlan] ?? 0
-  const requiredLevel = PLAN_TIERS[requiredPlan] ?? 0
+  const currentLevel = PLAN_TIERS[normalizePlanId(currentPlan)] ?? 0
+  const requiredLevel = PLAN_TIERS[normalizePlanId(requiredPlan)] ?? 0
   return currentLevel >= requiredLevel
 }
 

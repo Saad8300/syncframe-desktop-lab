@@ -33,7 +33,6 @@ import { AccessLimitModal } from './billing/AccessLimitModal'
 import { estimateCredits, reserveCredits, finalizeJob } from '../lib/credits'
 import { canUseTool, Plan } from '../lib/plans'
 import { parseTimelineCsv } from '../utils/timelineTimeParser'
-import { dispatchToast } from '../utils/notifications'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -332,25 +331,20 @@ export default function MediaTimelinePage() {
       const text = await file.text();
       const result = parseTimelineCsv(text, 'media');
       if (!result.success) {
-        dispatchToast('info', 'Notice', String("Invalid CSV:\n" + result.errors.join("\n")));
+        alert("Invalid CSV:\n" + result.errors.join("\n"));
         setTimelineCsv(null);
         return;
       }
       
       if (result.warnings && result.warnings.length > 0) {
-        const warningLines = result.warnings;
-        let warningMsg = warningLines.slice(0, 10).join("\n");
-        if (warningLines.length > 10) {
-          warningMsg += `\n... and ${warningLines.length - 10} more warnings.`;
-        }
-        dispatchToast('info', 'Notice', String("Warnings:\n" + warningMsg));
+        alert("Warnings:\n" + result.warnings.join("\n"));
       }
       
       const blob = new Blob([result.normalizedCsv], { type: 'text/csv' });
       const newFile = new File([blob], file.name, { type: 'text/csv' });
       setTimelineCsv(newFile);
     } catch (err) {
-      dispatchToast('info', 'Notice', String("Failed to read CSV file."));
+      alert("Failed to read CSV file.");
       setTimelineCsv(null);
     }
   };
@@ -566,17 +560,20 @@ export default function MediaTimelinePage() {
         }
       }
 
-      (activeSettings as any).cjid = cjid
+      activeSettings.cjid = cjid
+      activeSettings.credit_cost = estimatedCredits
+      activeSettings.credit_reserved = true
+      activeSettings.credit_tool_name = 'media_timeline'
+      activeSettings.duration_seconds = durationSeconds
       await createMediaTimelineBatchJob(
         audioInputMode,
         audioFile,
         audioZip,
         mediaZip,
         timelineCsv,
-        activeSettings as any,
+        activeSettings,
         introFile,
-        outroFile,
-        estimatedCredits
+        outroFile
       )
       
       // Do NOT call finalizeJob(cjid, 'success') immediately. 
@@ -588,7 +585,7 @@ export default function MediaTimelinePage() {
       if (user && cjid && reserved) {
         await finalizeJob(cjid, 'failed').catch(console.error)
       }
-      dispatchToast('info', 'Notice', String("Failed to add to queue: " + (err.message || err)))
+      alert("Failed to add to queue: " + (err.message || err))
     } finally {
       setIsAddingToQueue(false)
     }
@@ -743,7 +740,7 @@ export default function MediaTimelinePage() {
                   const name = window.prompt('Enter template name:', 'My Media Template')
                   if (name) {
                     saveTemplate({ name, tool: 'media', description: 'Saved from Media Timeline', settings })
-                    dispatchToast('success', 'Success', String('Template saved to your templates library!'))
+                    alert('Template saved to your templates library!')
                   }
                 }} 
                 className="text-[10px] font-bold px-2 py-1 bg-[var(--bg-input)] hover:bg-[var(--accent-primary)] hover:text-white rounded border border-[var(--border-subtle)] transition-colors"
@@ -757,7 +754,7 @@ export default function MediaTimelinePage() {
                 options={[ { value: '9:16', label: '9:16 Vertical' }, { value: '16:9', label: '16:9 Landscape' }, { value: '1:1', label: '1:1 Square' } ]} />
               
               <Sel id="export-resolution" label="Resolution" value={settings.exportResolution} disabled={disabled} onChange={v => set('exportResolution', v)}
-                options={[ { value: '720p', label: '720p Fast' }, { value: '1080p', label: '1080p HD' }, { value: '2K', label: '2K Sharp' }, { value: '4K', label: '4K Ultra' } ]} />
+                options={[ { value: '720p', label: '720p Fast' }, { value: '1080p', label: '1080p HD' }, { value: '2K', label: '2K Sharp' }, { value: '4K', label: '4K Max' } ]} />
 
               <Sel id="fit-mode" label="Fit Mode" value={settings.fitMode} disabled={disabled} onChange={v => set('fitMode', v)}
                 options={[ { value: 'cover', label: 'Cover (Crop)' }, { value: 'contain', label: 'Contain (Pad)' } ]} />

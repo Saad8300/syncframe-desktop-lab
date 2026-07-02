@@ -66,6 +66,14 @@ export const FALLBACK_FREE_PLAN: Plan = {
   sort_order: 1
 }
 
+export function normalizePlanId(planId: string): string {
+  const normalized = planId.toLowerCase().trim()
+  if (normalized === 'standard') return 'starter'
+  if (normalized === 'premium') return 'pro'
+  if (normalized === 'ultra' || normalized === 'enterprise') return 'agency'
+  return normalized
+}
+
 export function canUseTool(
   plan: Plan | null,
   credits: number,

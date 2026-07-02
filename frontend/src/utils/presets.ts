@@ -32,7 +32,7 @@ export interface ExportPreset {
   motionEffect:  MotionEffect
   transition:    Transition
   visualEffect:  VisualEffect
-  requiredPlan?: string // e.g. 'Standard', 'Pro', 'Ultra'
+  requiredPlan?: string // e.g. 'Starter', 'Pro', 'Agency'
 }
 
 export const BUILT_IN_PRESETS: ExportPreset[] = [
@@ -47,7 +47,7 @@ export const BUILT_IN_PRESETS: ExportPreset[] = [
     motionEffect:  'none',
     transition:    'none',
     visualEffect:  'none',
-    requiredPlan:  'Ultra',
+    requiredPlan:  'Agency',
   },
   {
     id:          'tiktok_1080p',
@@ -60,7 +60,7 @@ export const BUILT_IN_PRESETS: ExportPreset[] = [
     motionEffect:  'none',
     transition:    'none',
     visualEffect:  'none',
-    requiredPlan:  'Standard',
+    requiredPlan:  'Starter',
   },
   {
     id:          'youtube_4k',
@@ -73,7 +73,7 @@ export const BUILT_IN_PRESETS: ExportPreset[] = [
     motionEffect:  'none',
     transition:    'none',
     visualEffect:  'none',
-    requiredPlan:  'Ultra',
+    requiredPlan:  'Agency',
   },
   {
     id:          'youtube_1080p',
@@ -86,7 +86,7 @@ export const BUILT_IN_PRESETS: ExportPreset[] = [
     motionEffect:  'none',
     transition:    'none',
     visualEffect:  'none',
-    requiredPlan:  'Standard',
+    requiredPlan:  'Starter',
   },
   {
     id:          'instagram_reel',
@@ -99,7 +99,7 @@ export const BUILT_IN_PRESETS: ExportPreset[] = [
     motionEffect:  'none',
     transition:    'none',
     visualEffect:  'none',
-    requiredPlan:  'Standard',
+    requiredPlan:  'Starter',
   },
   {
     id:          'square_post',
@@ -112,7 +112,7 @@ export const BUILT_IN_PRESETS: ExportPreset[] = [
     motionEffect:  'none',
     transition:    'none',
     visualEffect:  'none',
-    requiredPlan:  'Standard',
+    requiredPlan:  'Starter',
   },
   {
     id:          'fast_test',

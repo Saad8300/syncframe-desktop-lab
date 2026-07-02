@@ -11,6 +11,7 @@ import os
 import uuid
 
 import subprocess
+from typing import Optional
 
 def _verify_mp4_audio(filepath: str) -> bool:
     import os
@@ -35,6 +36,22 @@ def _verify_mp4_audio(filepath: str) -> bool:
     except Exception as e:
         logger.error(f"FFprobe check failed for {filepath}: {e}")
         return False
+
+def _get_media_duration(filepath: str) -> Optional[float]:
+    import subprocess
+    try:
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            filepath
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        return float(result.stdout.strip())
+    except Exception as e:
+        # Avoid logger error here if logger is not defined yet, but logger is imported below.
+        print(f"Could not get duration for {filepath}: {e}")
+        return None
 
 import shutil
 import logging
@@ -522,7 +539,7 @@ async def jobs_start(
                                 output_type="video",
                                 output_url=f"/outputs/{output_filename}",
                                 file_extension="mp4",
-                                duration_seconds=result.get("duration", 0),
+                                duration_seconds=_get_media_duration(output_path) or result.get("duration") or None,
                                 resolution=export_resolution,
                                 aspect_ratio=aspect_ratio,
                                 render_profile=render_profile,
@@ -727,7 +744,7 @@ async def jobs_start_script_timestamp(
                     output_type="text",
                     output_url=f"/outputs/text/{out_name}",
                     file_extension=ext,
-                    duration_seconds=res.get("duration", 0),
+                    duration_seconds=res.get("duration") or None,
                     file_size_bytes=os.path.getsize(out_path),
                     metadata={
                         "segments_count": len(res.get("segments", [])),
@@ -1066,7 +1083,7 @@ async def jobs_start_video_timeline(
                                 output_type="video",
                                 output_url=f"/outputs/{output_filename}",
                                 file_extension="mp4",
-                                duration_seconds=result.get("duration", 0),
+                                duration_seconds=_get_media_duration(output_path) or result.get("visual_duration") or result.get("audio_duration") or None,
                                 resolution=export_resolution,
                                 aspect_ratio=aspect_ratio,
                                 render_profile=render_profile,
@@ -1391,7 +1408,7 @@ async def jobs_start_media_timeline(
                                 output_type="video",
                                 output_url=f"/outputs/{output_filename}",
                                 file_extension="mp4",
-                                duration_seconds=result.get("duration", 0),
+                                duration_seconds=_get_media_duration(output_path) or result.get("visual_duration") or result.get("audio_duration") or None,
                                 resolution=export_resolution,
                                 aspect_ratio=aspect_ratio,
                                 render_profile=render_profile,
@@ -1605,7 +1622,7 @@ async def audio_merge(
                 output_type="audio",
                 output_url=f"/outputs/audio/{final_filename}",
                 file_extension=fmt,
-                duration_seconds=duration,
+                duration_seconds=duration or None,
                 file_size_bytes=os.path.getsize(final_path) if os.path.exists(final_path) else None,
                 metadata={"parts_merged": meta["parts_merged"]},
                 credit_cost=credit_cost
@@ -1728,7 +1745,10 @@ async def api_batch_job_image_timeline(
     music_volume:      float = Form(0.12),
     music_fade:        str   = Form("true"),
     cjid:              Optional[str] = Form(None),
-    credit_cost:       Optional[int] = Form(None),
+    credit_cost:       Optional[float] = Form(None),
+    credit_reserved:   Optional[str] = Form(None),
+    credit_tool_name:  Optional[str] = Form(None),
+    duration_seconds:  Optional[float] = Form(None),
 ):
     # Create job ID and job dir
     import uuid
@@ -1797,6 +1817,9 @@ async def api_batch_job_image_timeline(
             "text_overlay_items": text_overlay_items,
             "cjid": cjid,
             "credit_cost": credit_cost,
+            "credit_reserved": str(credit_reserved).strip().lower() == "true" if credit_reserved is not None else False,
+            "credit_tool_name": credit_tool_name,
+            "duration_seconds": duration_seconds,
         }
         
         # Save config.json
@@ -1878,7 +1901,10 @@ async def api_batch_job_video_timeline(
     intro_file:    Optional[UploadFile] = File(None),
     outro_file:    Optional[UploadFile] = File(None),
     cjid:              Optional[str] = Form(None),
-    credit_cost:       Optional[int] = Form(None),
+    credit_cost:       Optional[float] = Form(None),
+    credit_reserved:   Optional[str] = Form(None),
+    credit_tool_name:  Optional[str] = Form(None),
+    duration_seconds:  Optional[float] = Form(None),
 ):
     import uuid
     import json
@@ -1945,6 +1971,9 @@ async def api_batch_job_video_timeline(
             "text_overlay_items": text_overlay_items,
             "cjid": cjid,
             "credit_cost": credit_cost,
+            "credit_reserved": str(credit_reserved).strip().lower() == "true" if credit_reserved is not None else False,
+            "credit_tool_name": credit_tool_name,
+            "duration_seconds": duration_seconds,
         }
         
         if watermark_text:
@@ -2027,7 +2056,10 @@ async def api_batch_job_media_timeline(
     intro_file:    Optional[UploadFile] = File(None),
     outro_file:    Optional[UploadFile] = File(None),
     cjid:              Optional[str] = Form(None),
-    credit_cost:       Optional[int] = Form(None),
+    credit_cost:       Optional[float] = Form(None),
+    credit_reserved:   Optional[str] = Form(None),
+    credit_tool_name:  Optional[str] = Form(None),
+    duration_seconds:  Optional[float] = Form(None),
 ):
     import uuid
     import json
@@ -2093,6 +2125,9 @@ async def api_batch_job_media_timeline(
             "text_overlay_items": text_overlay_items,
             "cjid": cjid,
             "credit_cost": credit_cost,
+            "credit_reserved": str(credit_reserved).strip().lower() == "true" if credit_reserved is not None else False,
+            "credit_tool_name": credit_tool_name,
+            "duration_seconds": duration_seconds,
         }
         
         if watermark_text:
@@ -2275,13 +2310,6 @@ def api_start_batch_queue():
     if not access["allowed"]:
         raise HTTPException(403, access["reason"])
         
-    jobs = batch_queue_runner.list_jobs()
-    for job in jobs:
-        if job.get("status") == "queued":
-            config = job.get("config", {})
-            if not config.get("cjid"):
-                raise HTTPException(400, "Some queued jobs are missing credit reservations. Please remove and re-add them.")
-                
     res = batch_queue_runner.start_runner()
     return JSONResponse(content=res)
 

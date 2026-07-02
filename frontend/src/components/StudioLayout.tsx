@@ -59,7 +59,7 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
   const { user, isAuthenticated, signOut, setAuthModalOpen } = useAuth()
   const { requireAuth } = useAuth()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const { plan, loading: planLoading, initialized: planInitialized } = usePlan()
+  const { plan, subscription, loading: planLoading, initialized: planInitialized } = usePlan()
   const { remaining, credits, loading: creditsLoading } = useCredits()
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false)
 
@@ -186,34 +186,52 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
         </div>
 
         {/* ── Sidebar Credits Widget ── */}
-        {isAuthenticated && user && (
-          <div className={`px-3 pb-3 ${collapsed ? 'hidden' : 'block'}`}>
-            <div className="bg-black/5 dark:bg-white/5 rounded-xl p-3 border border-black/5 dark:border-white/5">
-              <div className="flex justify-between items-center mb-1.5">
-                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Credits</span>
-                <span className="text-[10px] font-semibold text-cyan-500 bg-cyan-500/10 px-1.5 py-0.5 rounded-full">{plan?.display_name || 'Free'}</span>
-              </div>
-              {creditsLoading && (!credits || !credits.monthly_allocation) ? (
-                <div className="animate-pulse flex flex-col gap-2 mt-2">
-                  <div className="h-3 bg-gray-300 dark:bg-gray-700 rounded w-24"></div>
-                  <div className="h-1.5 bg-gray-300 dark:bg-gray-700 rounded-full w-full"></div>
+        {isAuthenticated && user && (() => {
+          const isPaid = plan?.id !== 'free'
+          let expiryText: string | null = null
+          const dStr = credits?.next_reset_at || subscription?.current_period_end
+          if (dStr) {
+            const d = new Date(dStr)
+            const formatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+            expiryText = isPaid ? `Credits renew: ${formatted}` : `Trial credits expire when used`
+          } else if (!isPaid) {
+            expiryText = 'Trial credits do not renew'
+          }
+
+          return (
+            <div className={`px-3 pb-3 ${collapsed ? 'hidden' : 'block'}`}>
+              <div className="bg-black/5 dark:bg-white/5 rounded-xl p-3 border border-black/5 dark:border-white/5">
+                <div className="flex justify-between items-center mb-1.5">
+                  <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Credits</span>
+                  <span className="text-[10px] font-semibold text-cyan-500 bg-cyan-500/10 px-1.5 py-0.5 rounded-full">{plan?.display_name || 'Free'}</span>
                 </div>
-              ) : (
-                <>
-                  <div className="text-[13px] font-bold text-[var(--text-primary)]">
-                    {remaining.toLocaleString()} <span className="text-[11px] text-[var(--text-muted)] font-medium">/ {(credits?.monthly_allocation || 30).toLocaleString()}</span>
+                {creditsLoading && (!credits || !credits.monthly_allocation) ? (
+                  <div className="animate-pulse flex flex-col gap-2 mt-2">
+                    <div className="h-3 bg-gray-300 dark:bg-gray-700 rounded w-24"></div>
+                    <div className="h-1.5 bg-gray-300 dark:bg-gray-700 rounded-full w-full"></div>
                   </div>
-                  <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-800 rounded-full mt-2 overflow-hidden">
-                    <div 
-                      className="credits-bar-fill h-full bg-gradient-to-r from-cyan-400 to-indigo-500 rounded-full" 
-                      style={{ width: `${Math.min(100, Math.max(0, (remaining / (credits?.monthly_allocation || 30)) * 100))}%` }}
-                    />
-                  </div>
-                </>
-              )}
+                ) : (
+                  <>
+                    <div className="text-[13px] font-bold text-[var(--text-primary)]">
+                      {remaining.toLocaleString()} <span className="text-[11px] text-[var(--text-muted)] font-medium">/ {(credits?.monthly_allocation || 30).toLocaleString()}</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-800 rounded-full mt-2 overflow-hidden">
+                      <div 
+                        className="credits-bar-fill h-full bg-gradient-to-r from-cyan-400 to-indigo-500 rounded-full" 
+                        style={{ width: `${Math.min(100, Math.max(0, (remaining / (credits?.monthly_allocation || 30)) * 100))}%` }}
+                      />
+                    </div>
+                    {expiryText && (
+                      <div className="text-[10px] mt-2 text-[var(--text-muted)] font-medium">
+                        {expiryText}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )
+        })()}
 
         {/* ── User Profile / Login Widget ── */}
         {isAuthenticated && user ? (

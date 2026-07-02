@@ -1,6 +1,6 @@
 // App.tsx – SyncFrame Studio — Professional creator dashboard
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from './auth/AuthProvider'
 import { AuthModal } from './components/auth/AuthModal'
 import AuthCallback from './auth/AuthCallback'
@@ -339,12 +339,7 @@ export default function App() {
       }
       
       if (result.warnings && result.warnings.length > 0) {
-        const warningLines = result.warnings;
-        let warningMsg = warningLines.slice(0, 10).join("\n");
-        if (warningLines.length > 10) {
-          warningMsg += `\n... and ${warningLines.length - 10} more warnings.`;
-        }
-        alert("Warnings:\n" + warningMsg);
+        alert("Warnings:\n" + result.warnings.join("\n"));
       }
       
       const blob = new Blob([result.normalizedCsv], { type: 'text/csv' });
@@ -435,6 +430,8 @@ export default function App() {
     return { ...s, textOverlayEnabled: isActive };
   };
 
+  const notificationSentRef = useRef(false);
+
   const handleGenerate = async () => {
     if (!requireAuth()) return;
     if ((audioInputMode === 'single' ? !audioFile : !audioZip) || !imagesZip || !csvFile) return
@@ -479,6 +476,7 @@ export default function App() {
       }
     }
 
+    notificationSentRef.current = false;
     setStatus('uploading')
     try {
       const activeSettings = computeActiveSettings(settings);
@@ -499,7 +497,6 @@ export default function App() {
     if ((audioInputMode === 'single' ? !audioFile : !audioZip) || !imagesZip || !csvFile) return
 
     const durationSeconds = Math.max(1, Math.ceil(Number(audioDuration) || 60))
-
     const estimatedCredits = await estimateCredits('video_export', {
       resolution: settings.exportResolution,
       is_premium_template: false,
@@ -509,7 +506,7 @@ export default function App() {
     const access = canUseTool(plan, remaining, 'batch_video', {
       resolution: settings.exportResolution,
       is_batch: true
-    }, 0, planLoading)
+    }, estimatedCredits, planLoading)
     if (!access.allowed) {
       setLimitModalReason(access.reason)
       setLimitModalRequiredPlan(access.requiredPlan)
@@ -517,38 +514,41 @@ export default function App() {
       return
     }
 
-    let cjid: string | null = null
-    let reserved = false
-    if (user) {
-      cjid = crypto.randomUUID()
-      try {
-        await reserveCredits('video_export', durationSeconds, estimatedCredits, cjid, {
-          resolution: settings.exportResolution,
-          is_premium_template: false,
-          duration_seconds: durationSeconds
-        })
-        reserved = true
-      } catch (err: any) {
-        setLimitModalReason(err.message || "Internet connection is required to verify credits before batching.")
-        setLimitModalRequiredPlan(undefined)
-        setLimitModalOpen(true)
-        return
-      }
-    }
-
     setIsQueuing(true)
     setQueueSuccess(false)
+    let cjid: string | null = null
+    let reserved = false
+
     try {
-      const activeSettings = computeActiveSettings(settings) as any;
-      activeSettings.cjid = cjid
-      activeSettings.estimated_credits = estimatedCredits
-      await createImageTimelineBatchJob(audioInputMode, audioFile, audioZip, imagesZip, csvFile, activeSettings, introFile, outroFile, bgMusicFile, estimatedCredits)
+      const activeSettings: any = computeActiveSettings(settings);
+
+      if (user) {
+        cjid = crypto.randomUUID()
+        try {
+          await reserveCredits('video_export', durationSeconds, estimatedCredits, cjid, {
+            is_batch: true, resolution: settings.exportResolution, duration_seconds: durationSeconds, is_premium_template: false
+          })
+          reserved = true
+        } catch (err: any) {
+          setLimitModalReason(err.message || 'Internet connection is required to verify credits before starting this export.')
+          setLimitModalOpen(true)
+          setIsQueuing(false)
+          return
+        }
+        activeSettings.cjid = cjid
+        activeSettings.credit_cost = estimatedCredits
+        activeSettings.credit_reserved = true
+        activeSettings.credit_tool_name = 'video_export' // as per reserveCredits call
+        activeSettings.duration_seconds = durationSeconds
+      }
+
+      await createImageTimelineBatchJob(audioInputMode, audioFile, audioZip, imagesZip, csvFile, activeSettings, introFile, outroFile, bgMusicFile)
       setQueueSuccess(true)
-    } catch (err) {
+    } catch (err: any) {
       if (user && cjid && reserved) {
         await finalizeJob(cjid, 'failed').catch(console.error)
       }
-      alert("Failed to add to queue: " + err)
+      alert("Failed to add to queue: " + (err.message || err))
     } finally {
       setIsQueuing(false)
     }
@@ -571,7 +571,10 @@ export default function App() {
         errors:   jobStatus.errors,
       })
       setStatus('done')
-      notifyRenderCompleted(jobStatus.output_filename ?? undefined)
+      if (!notificationSentRef.current) {
+        notifyRenderCompleted(jobStatus.output_filename ?? undefined)
+        notificationSentRef.current = true
+      }
     } else {
       if (user && activeClientJobId) {
         await finalizeJob(activeClientJobId, 'failed')
@@ -584,7 +587,10 @@ export default function App() {
         timeline_report: jobStatus.timeline_report,
       })
       setStatus('error')
-      notifyRenderFailed(jobStatus.errors[0] || 'Unknown error')
+      if (!notificationSentRef.current) {
+        notifyRenderFailed(jobStatus.errors[0] || 'Unknown error')
+        notificationSentRef.current = true
+      }
     }
   }, [user, activeClientJobId])
 
@@ -968,7 +974,7 @@ export default function App() {
                           options={[ { value: '9:16', label: '9:16 Vertical' }, { value: '16:9', label: '16:9 Landscape' }, { value: '1:1', label: '1:1 Square' } ]} />
                         
                         <Sel id="export-resolution" label="Resolution" value={settings.exportResolution} disabled={isLoading} onChange={v => setSettings({...settings, exportResolution: v as any})}
-                          options={[ { value: '720p', label: '720p Fast' }, { value: '1080p', label: '1080p HD' }, { value: '2K', label: '2K Sharp' }, { value: '4K', label: '4K Ultra' } ]} />
+                          options={[ { value: '720p', label: '720p Fast' }, { value: '1080p', label: '1080p HD' }, { value: '2K', label: '2K Sharp' }, { value: '4K', label: '4K Max' } ]} />
         
                         <Sel id="fit-mode" label="Fit Mode" value={settings.fitMode} disabled={isLoading} onChange={v => setSettings({...settings, fitMode: v as any})}
                           options={[ { value: 'cover', label: 'Cover (Crop)' }, { value: 'contain', label: 'Contain (Pad)' } ]} />

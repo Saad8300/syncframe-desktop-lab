@@ -193,14 +193,12 @@ export async function createImageTimelineBatchJob(
   audioZip:     File | null,
   imagesZip:    File,
   timestampCsv: File,
-  settings:     GenerateSettings,
+  settings:     GenerateSettings & { cjid?: string | null, credit_cost?: number, credit_reserved?: boolean, credit_tool_name?: string, duration_seconds?: number },
   introFile?:   File | null,
   outroFile?:   File | null,
   bgMusicFile?: File | null,
-  creditCost?: number,
 ): Promise<{ job: BatchJob }> {
   const form = new FormData()
-  if (creditCost !== undefined) form.append('credit_cost', String(creditCost))
 
   // Required
   form.append('audio_input_mode', audioInputMode)
@@ -216,12 +214,18 @@ export async function createImageTimelineBatchJob(
   // Core video settings
   form.append('aspect_ratio',      settings.aspectRatio)
   form.append('export_resolution', settings.exportResolution)
-  if ((settings as any).cjid) form.append('cjid', (settings as any).cjid)
   form.append('fit_mode',          settings.fitMode)
   form.append('transition',        settings.transition)
   form.append('transition_duration', settings.transitionDuration)
   form.append('render_profile',    settings.renderProfile)
   form.append('output_name',       settings.outputName || 'video')
+
+  // Credit metadata
+  if (settings.cjid) form.append('cjid', settings.cjid)
+  if (settings.credit_cost !== undefined) form.append('credit_cost', String(settings.credit_cost))
+  if (settings.credit_reserved !== undefined) form.append('credit_reserved', String(settings.credit_reserved))
+  if (settings.credit_tool_name) form.append('credit_tool_name', settings.credit_tool_name)
+  if (settings.duration_seconds !== undefined) form.append('duration_seconds', String(settings.duration_seconds))
 
   // Batch 9A — motion & style
   form.append('motion_effect',    settings.motionEffect)
@@ -266,13 +270,11 @@ export async function createVideoTimelineBatchJob(
   audioZip:    File | null,
   videosZip:   File,
   timelineCsv: File,
-  settings:    VideoTimelineSettings & { cjid?: string | null },
+  settings:    VideoTimelineSettings & { cjid?: string | null, credit_cost?: number, credit_reserved?: boolean, credit_tool_name?: string, duration_seconds?: number },
   introFile?:  File | null,
   outroFile?:  File | null,
-  creditCost?: number,
 ): Promise<{ job: BatchJob }> {
   const form = new FormData()
-  if (creditCost !== undefined) form.append('credit_cost', String(creditCost))
 
   // Required uploads
   form.append('audio_input_mode', audioInputMode)
@@ -293,6 +295,10 @@ export async function createVideoTimelineBatchJob(
   form.append('aspect_ratio',      settings.aspectRatio)
   form.append('export_resolution', settings.exportResolution)
   if (settings.cjid) form.append('cjid', settings.cjid)
+  if (settings.credit_cost !== undefined) form.append('credit_cost', String(settings.credit_cost))
+  if (settings.credit_reserved !== undefined) form.append('credit_reserved', String(settings.credit_reserved))
+  if (settings.credit_tool_name) form.append('credit_tool_name', settings.credit_tool_name)
+  if (settings.duration_seconds !== undefined) form.append('duration_seconds', String(settings.duration_seconds))
   form.append('fit_mode',          settings.fitMode)
   form.append('fill_mode',         settings.fillMode)
   form.append('render_profile',    settings.renderProfile)
@@ -365,13 +371,11 @@ export async function createMediaTimelineBatchJob(
     backgroundMusicVolume: number
     backgroundMusicLoop:   boolean
     backgroundMusicFade:   boolean
-  },
+  } & { cjid?: string | null, credit_cost?: number, credit_reserved?: boolean, credit_tool_name?: string, duration_seconds?: number },
   introFile?:  File | null,
   outroFile?:  File | null,
-  creditCost?: number,
 ): Promise<{ job: BatchJob }> {
   const form = new FormData()
-  if (creditCost !== undefined) form.append('credit_cost', String(creditCost))
 
   form.append('audio_input_mode', audioInputMode)
   if (audioInputMode === 'single' && audioFile) {
@@ -385,11 +389,16 @@ export async function createMediaTimelineBatchJob(
 
   form.append('aspect_ratio',      settings.aspectRatio)
   form.append('export_resolution', settings.exportResolution)
-  if ((settings as any).cjid) form.append('cjid', (settings as any).cjid)
   form.append('fit_mode',          settings.fitMode)
   form.append('fill_mode',         settings.fillMode)
   form.append('render_profile',    settings.renderProfile)
   form.append('output_name',       settings.outputName || 'media_timeline')
+
+  if (settings.cjid) form.append('cjid', settings.cjid)
+  if (settings.credit_cost !== undefined) form.append('credit_cost', String(settings.credit_cost))
+  if (settings.credit_reserved !== undefined) form.append('credit_reserved', String(settings.credit_reserved))
+  if (settings.credit_tool_name) form.append('credit_tool_name', settings.credit_tool_name)
+  if (settings.duration_seconds !== undefined) form.append('duration_seconds', String(settings.duration_seconds))
 
   form.append('text_position',   settings.textPosition)
   form.append('text_size',       settings.textSize)
@@ -810,28 +819,31 @@ export async function getBatchState(): Promise<BatchState> {
 
 export async function startBatchQueue(): Promise<any> {
   const res = await fetch(apiUrl('/api/batch/start'), { method: 'POST' })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(parseErrorResponse(res.status, text))
-  }
+  if (!res.ok) throw new Error("Failed to start batch queue")
   return res.json()
+}
+
+export async function startBatchQueueWithValidation(): Promise<any> {
+  const jobsRes = await getBatchJobs()
+  const pendingJobs = jobsRes.filter((j: any) => j.status === 'queued' || j.status === 'failed') || []
+  
+  const missingCjid = pendingJobs.some((j: any) => !j.config?.cjid)
+  if (missingCjid) {
+    throw new Error("Some queued jobs are missing credit reservations. Please remove and re-add them.")
+  }
+
+  return startBatchQueue()
 }
 
 export async function pauseBatchAfterCurrent(): Promise<any> {
   const res = await fetch(apiUrl('/api/batch/pause-after-current'), { method: 'POST' })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(parseErrorResponse(res.status, text))
-  }
+  if (!res.ok) throw new Error("Failed to pause batch queue")
   return res.json()
 }
 
 export async function stopBatchQueue(): Promise<any> {
   const res = await fetch(apiUrl('/api/batch/stop'), { method: 'POST' })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(parseErrorResponse(res.status, text))
-  }
+  if (!res.ok) throw new Error("Failed to stop batch queue")
   return res.json()
 }
 

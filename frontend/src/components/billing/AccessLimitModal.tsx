@@ -61,7 +61,7 @@ export function AccessLimitModal({
           </h2>
           
           <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
-            {reason || 'This feature is available on Pro and Ultra.'}
+            {reason || 'This feature is available on Pro and Agency plans.'}
           </p>
 
           {!isLoginRequired && (requiredPlan || currentPlan) && (
@@ -74,7 +74,7 @@ export function AccessLimitModal({
               </div>
               <div className="text-right">
                 <p className="text-[10px] uppercase font-bold tracking-wider" style={{ color: 'var(--text-muted)' }}>Required</p>
-                <p className="text-sm font-semibold mt-0.5" style={{ color: 'var(--accent-primary)' }}>{requiredPlan || 'Pro'}</p>
+                <p className="text-sm font-semibold mt-0.5" style={{ color: 'var(--accent-primary)' }}>{requiredPlan === 'Ultra' ? 'Agency' : requiredPlan === 'Standard' ? 'Starter' : (requiredPlan || 'Pro')}</p>
               </div>
             </div>
           )}

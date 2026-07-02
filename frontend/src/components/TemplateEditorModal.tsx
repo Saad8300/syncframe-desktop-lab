@@ -183,7 +183,7 @@ export default function TemplateEditorModal({ initialData, onSave, onClose }: Pr
                     <option value="720p">720p HD</option>
                     <option value="1080p">1080p Full HD</option>
                     <option value="1440p">1440p 2K</option>
-                    <option value="4K">4K Ultra HD</option>
+                    <option value="4K">4K Max HD</option>
                   </select>
                 </div>
                 <div className="space-y-1.5">

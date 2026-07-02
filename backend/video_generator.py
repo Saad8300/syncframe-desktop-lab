@@ -988,7 +988,6 @@ def generate_video(
         else:
             logger.info("Final clip has audio: true")
             logger.info(f"Final visual duration: {video.duration:.2f}s, Final audio duration: {video.audio.duration:.2f}s")
-            final_duration = video.duration
 
         video.write_videofile(
             output_path,
@@ -1032,5 +1031,4 @@ def generate_video(
         "warnings": warnings,
         "errors": errors,
         "cancelled": False,
-        "duration": final_duration if 'final_duration' in locals() else 0
     }

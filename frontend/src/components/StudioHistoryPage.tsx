@@ -37,7 +37,8 @@ function formatDate(iso: string) {
 }
 
 function formatDuration(seconds: number | undefined | null) {
-  if (seconds == null || isNaN(seconds) || seconds === 0) return '—'
+  if (seconds == null || isNaN(seconds)) return '—'
+  if (seconds === 0) return '0s'
   const m = Math.floor(seconds / 60)
   const s = Math.floor(seconds % 60)
   if (m > 0) return `${m}m ${s}s`
@@ -45,7 +46,7 @@ function formatDuration(seconds: number | undefined | null) {
 }
 
 function formatCreditCost(cost: number | undefined | null) {
-  if (cost == null || isNaN(cost) || cost === 0) return '—'
+  if (cost == null || isNaN(cost)) return '—'
   return `${cost} cr`
 }
 

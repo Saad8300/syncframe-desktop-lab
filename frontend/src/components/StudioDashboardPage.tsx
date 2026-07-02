@@ -12,7 +12,8 @@ import {
   IconSparkles,
   IconArrowRight,
 } from './icons'
-import { getHistory, getBatchStats, getBatchState, startBatchQueue, pauseBatchAfterCurrent, stopBatchQueue, type BatchState } from '../utils/api'
+import { getHistory, getBatchStats, getBatchState, startBatchQueueWithValidation, pauseBatchAfterCurrent, stopBatchQueue, type BatchState } from '../utils/api'
+import { dispatchToast } from '../utils/notifications'
 import StudioPageHeader from './StudioPageHeader'
 
 // ── Tiny inline icons not in icons.tsx ──────────────────────────────────────
@@ -562,14 +563,16 @@ export default function StudioDashboardPage({ onNavigateToBatch }: { onNavigateT
   const handleQueueAction = async (action: 'start' | 'pause' | 'stop') => {
     setQueueActionLoading(true)
     try {
-      if (action === 'start') await startBatchQueue()
+      if (action === 'start') await startBatchQueueWithValidation()
       else if (action === 'pause') await pauseBatchAfterCurrent()
       else if (action === 'stop') await stopBatchQueue()
       setTimeout(() => {
         getBatchState().catch(() => null).then(s => { if (s) setBatchState(s) })
         getBatchStats().catch(() => null).then(s => { if (s) setBatchStats(s) })
       }, 500)
-    } catch { /* ignore */ } finally {
+    } catch (err: any) { 
+      dispatchToast('info', 'Notice', String(err.message || err))
+    } finally {
       setQueueActionLoading(false)
     }
   }
