@@ -482,32 +482,48 @@ def transcribe_audio_backend(
     if progress_callback:
         progress_callback("Transcribing audio…", 20)
 
-    # Transcribe
-    segments_gen, info = model.transcribe(
-        processed_audio_path,
-        language=language,
-        vad_filter=True,
-        beam_size=5
-    )
+    # Transcribe with VAD fallback
+    raw_segments = []
+    
+    def _do_transcribe(use_vad: bool):
+        segs = []
+        gen, inf = model.transcribe(
+            processed_audio_path,
+            language=language,
+            vad_filter=use_vad,
+            beam_size=5
+        )
+        for i, segment in enumerate(gen):
+            start_t = max(0.0, segment.start)
+            end_t = min(true_duration if true_duration > 0 else inf.duration, segment.end)
+            
+            if end_t <= start_t:
+                continue
+                
+            segs.append({
+                "start": start_t,
+                "end": end_t,
+                "text": segment.text.strip(),
+            })
+            if progress_callback and i % 5 == 0:
+                progress_callback(f"Transcribing… ({seconds_to_ts(end_t)})", min(90, 20 + i))
+        return segs, inf
+
+    try:
+        raw_segments, info = _do_transcribe(use_vad=True)
+    except Exception as e:
+        err_msg = str(e)
+        if "silero_vad" in err_msg or "NoSuchFile" in err_msg or "VAD" in err_msg:
+            logger.warning("VAD model asset missing; retrying transcription without VAD.")
+            if progress_callback:
+                progress_callback("Retrying transcription (VAD disabled)…", 25)
+            # Retry without VAD
+            raw_segments, info = _do_transcribe(use_vad=False)
+        else:
+            raise e
 
     if true_duration == 0.0:
         true_duration = info.duration
-
-    raw_segments = []
-    for i, segment in enumerate(segments_gen):
-        start_t = max(0.0, segment.start)
-        end_t = min(true_duration, segment.end)
-        
-        if end_t <= start_t:
-            continue
-            
-        raw_segments.append({
-            "start": start_t,
-            "end": end_t,
-            "text": segment.text.strip(),
-        })
-        if progress_callback and i % 5 == 0:
-            progress_callback(f"Transcribing… ({seconds_to_ts(end_t)})", min(90, 20 + i))
 
     if not raw_segments:
         if processed_audio_path != audio_path:
