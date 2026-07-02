@@ -340,7 +340,7 @@ def _process_job(job: Dict[str, Any]):
                 output_type="video",
                 output_url=f"/outputs/{output_filename}",
                 file_extension="mp4",
-                duration_seconds=None,
+                duration_seconds=res.get("duration", 0),
                 file_size_bytes=file_size,
                 resolution=config.get("export_resolution", "1080p"),
                 aspect_ratio=config.get("aspect_ratio", "9:16"),
@@ -349,7 +349,8 @@ def _process_job(job: Dict[str, Any]):
                     "batch_job_id": job_id,
                     "source_tool": source_tool,
                     "generated_via": "batch_queue"
-                }
+                },
+                credit_cost=config.get("credit_cost", None)
             )
         except Exception as he:
             logger.error(f"Failed to save batch history: {he}")

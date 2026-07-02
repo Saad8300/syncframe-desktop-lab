@@ -414,6 +414,10 @@ html:not(.dark) {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(14px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -422,9 +426,17 @@ html:not(.dark) {
   from { opacity: 0; transform: translateY(-8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
 @keyframes scaleIn {
   from { opacity: 0; transform: scale(0.94); }
   to   { opacity: 1; transform: scale(1); }
+}
+@keyframes scaleInModal {
+  from { opacity: 0; transform: scale(0.88) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 @keyframes progressIndeterminate {
   0%   { width: 0%;   margin-left: 0%; }
@@ -448,13 +460,93 @@ html:not(.dark) {
   0%, 100% { opacity: 0.6; }
   50%       { opacity: 1; }
 }
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}
 
-.animate-fade-in    { animation: fadeIn  0.22s ease-out; }
-.animate-slide-up   { animation: slideUp 0.30s cubic-bezier(0.34, 1.2, 0.64, 1); }
-.animate-slide-down { animation: slideDown 0.22s ease-out; }
-.animate-scale-in   { animation: scaleIn 0.25s cubic-bezier(0.34, 1.2, 0.64, 1); }
-.animate-pop-in     { animation: popIn   0.3s cubic-bezier(0.34, 1.2, 0.64, 1); }
-.animate-spin       { animation: spin 1s linear infinite; }
-.animate-pulse-slow { animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-.animate-shimmer    { animation: shimmer 2s infinite linear; }
-.animate-breathe    { animation: breathe 2s ease-in-out infinite; }
+/* ── Animation utility classes ── */
+.animate-fade-in       { animation: fadeIn      0.20s ease-out both; }
+.animate-fade-in-up    { animation: fadeInUp    0.24s ease-out both; }
+.animate-slide-up      { animation: slideUp     0.26s cubic-bezier(0.34, 1.2, 0.64, 1) both; }
+.animate-slide-down    { animation: slideDown   0.20s ease-out both; }
+.animate-slide-in-right{ animation: slideInRight 0.22s ease-out both; }
+.animate-scale-in      { animation: scaleIn     0.22s cubic-bezier(0.34, 1.2, 0.64, 1) both; }
+.animate-modal-in      { animation: scaleInModal 0.22s cubic-bezier(0.34, 1.2, 0.64, 1) both; }
+.animate-pop-in        { animation: popIn       0.28s cubic-bezier(0.34, 1.2, 0.64, 1) both; }
+.animate-spin          { animation: spin        1s linear infinite; }
+.animate-pulse-slow    { animation: pulse       3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+.animate-shimmer       { animation: shimmer     2s infinite linear; }
+.animate-breathe       { animation: breathe     2s ease-in-out infinite; }
+
+/* ── Stagger delay helpers ── */
+.delay-50  { animation-delay: 50ms;  }
+.delay-100 { animation-delay: 100ms; }
+.delay-150 { animation-delay: 150ms; }
+.delay-200 { animation-delay: 200ms; }
+
+/* ── Interactive element polish ── */
+
+/* Tool / feature cards — subtle lift on hover */
+.tool-card {
+  transition: transform 0.18s ease-out, box-shadow 0.18s ease-out, border-color 0.15s ease;
+}
+.tool-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-elevated);
+}
+.tool-card:active {
+  transform: translateY(-1px);
+}
+
+/* Sidebar nav items */
+.nav-item {
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.12s ease;
+}
+.nav-item:hover {
+  transform: translateX(2px);
+}
+.nav-item-active {
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* Credits progress bar animated fill */
+.credits-bar-fill {
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Generic interactive card hover */
+.hover-lift {
+  transition: transform 0.18s ease-out, box-shadow 0.18s ease-out;
+}
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-elevated);
+}
+
+/* ── Reduced motion — disable all non-essential animations ── */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-fade-in-up,
+  .animate-slide-up,
+  .animate-slide-down,
+  .animate-slide-in-right,
+  .animate-scale-in,
+  .animate-modal-in,
+  .animate-pop-in {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .tool-card,
+  .nav-item,
+  .hover-lift {
+    transition: none !important;
+  }
+  .credits-bar-fill {
+    transition: none !important;
+  }
+}

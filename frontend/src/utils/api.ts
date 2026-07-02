@@ -125,8 +125,10 @@ export async function startJob(
   introFile?:   File | null,
   outroFile?:   File | null,
   bgMusicFile?: File | null,
+  creditCost?:  number,
 ): Promise<{ job_id: string }> {
   const form = new FormData()
+  if (creditCost !== undefined) form.append('credit_cost', String(creditCost))
 
   // Required
   form.append('audio_input_mode', audioInputMode)
@@ -195,8 +197,10 @@ export async function createImageTimelineBatchJob(
   introFile?:   File | null,
   outroFile?:   File | null,
   bgMusicFile?: File | null,
+  creditCost?: number,
 ): Promise<{ job: BatchJob }> {
   const form = new FormData()
+  if (creditCost !== undefined) form.append('credit_cost', String(creditCost))
 
   // Required
   form.append('audio_input_mode', audioInputMode)
@@ -212,6 +216,7 @@ export async function createImageTimelineBatchJob(
   // Core video settings
   form.append('aspect_ratio',      settings.aspectRatio)
   form.append('export_resolution', settings.exportResolution)
+  if ((settings as any).cjid) form.append('cjid', (settings as any).cjid)
   form.append('fit_mode',          settings.fitMode)
   form.append('transition',        settings.transition)
   form.append('transition_duration', settings.transitionDuration)
@@ -264,8 +269,10 @@ export async function createVideoTimelineBatchJob(
   settings:    VideoTimelineSettings & { cjid?: string | null },
   introFile?:  File | null,
   outroFile?:  File | null,
+  creditCost?: number,
 ): Promise<{ job: BatchJob }> {
   const form = new FormData()
+  if (creditCost !== undefined) form.append('credit_cost', String(creditCost))
 
   // Required uploads
   form.append('audio_input_mode', audioInputMode)
@@ -361,8 +368,10 @@ export async function createMediaTimelineBatchJob(
   },
   introFile?:  File | null,
   outroFile?:  File | null,
+  creditCost?: number,
 ): Promise<{ job: BatchJob }> {
   const form = new FormData()
+  if (creditCost !== undefined) form.append('credit_cost', String(creditCost))
 
   form.append('audio_input_mode', audioInputMode)
   if (audioInputMode === 'single' && audioFile) {
@@ -376,6 +385,7 @@ export async function createMediaTimelineBatchJob(
 
   form.append('aspect_ratio',      settings.aspectRatio)
   form.append('export_resolution', settings.exportResolution)
+  if ((settings as any).cjid) form.append('cjid', (settings as any).cjid)
   form.append('fit_mode',          settings.fitMode)
   form.append('fill_mode',         settings.fillMode)
   form.append('render_profile',    settings.renderProfile)
@@ -464,8 +474,10 @@ export async function startVideoTimelineJob(
   settings:    VideoTimelineSettings,
   introFile?:  File | null,
   outroFile?:  File | null,
+  creditCost?: number,
 ): Promise<{ job_id: string }> {
   const form = new FormData()
+  if (creditCost !== undefined) form.append('credit_cost', String(creditCost))
 
   // Required uploads
   form.append('audio_input_mode', audioInputMode)
@@ -600,8 +612,10 @@ export async function startMediaTimelineJob(
   },
   introFile?:  File | null,
   outroFile?:  File | null,
+  creditCost?: number,
 ): Promise<{ job_id: string }> {
   const form = new FormData()
+  if (creditCost !== undefined) form.append('credit_cost', String(creditCost))
 
   form.append('audio_input_mode', audioInputMode)
   if (audioInputMode === 'single' && audioFile) {
@@ -796,19 +810,28 @@ export async function getBatchState(): Promise<BatchState> {
 
 export async function startBatchQueue(): Promise<any> {
   const res = await fetch(apiUrl('/api/batch/start'), { method: 'POST' })
-  if (!res.ok) throw new Error("Failed to start batch queue")
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(parseErrorResponse(res.status, text))
+  }
   return res.json()
 }
 
 export async function pauseBatchAfterCurrent(): Promise<any> {
   const res = await fetch(apiUrl('/api/batch/pause-after-current'), { method: 'POST' })
-  if (!res.ok) throw new Error("Failed to pause batch queue")
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(parseErrorResponse(res.status, text))
+  }
   return res.json()
 }
 
 export async function stopBatchQueue(): Promise<any> {
   const res = await fetch(apiUrl('/api/batch/stop'), { method: 'POST' })
-  if (!res.ok) throw new Error("Failed to stop batch queue")
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(parseErrorResponse(res.status, text))
+  }
   return res.json()
 }
 

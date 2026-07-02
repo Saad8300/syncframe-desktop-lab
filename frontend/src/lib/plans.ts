@@ -72,9 +72,9 @@ export function canUseTool(
   tool: string,
   requestedOptions: { duration_seconds?: number, resolution?: string, is_premium_template?: boolean, is_batch?: boolean } = {},
   estimatedCredits: number = 0,
-  planLoading: boolean = false
+  planLoading: boolean = false // Actually passed as !initialized now
 ): ToolAccessResult {
-  if (planLoading && (!plan || plan.id === 'free')) {
+  if (planLoading) {
     return {
       allowed: false,
       reason: 'Checking plan...',

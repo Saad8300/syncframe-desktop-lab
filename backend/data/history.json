@@ -18,5 +18,113 @@
       "text_overlay_enabled": false,
       "text_overlay_mode": "whole_video"
     }
+  },
+  {
+    "id": "hist_baa78c431b42",
+    "created_at": "2026-07-02T13:57:09.199079Z",
+    "tool": "audio_merger",
+    "tool_label": "Audio Merger",
+    "output_name": "merged_audio.wav",
+    "output_type": "audio",
+    "output_url": "/outputs/audio/merged_audio.wav",
+    "file_extension": "wav",
+    "duration_seconds": 18.28,
+    "resolution": null,
+    "aspect_ratio": null,
+    "render_profile": null,
+    "file_size_bytes": 3224670,
+    "status": "completed",
+    "credit_cost": 1,
+    "metadata": {
+      "parts_merged": 2
+    }
+  },
+  {
+    "id": "hist_e9a79dffd9c0",
+    "created_at": "2026-07-02T13:59:29.858779Z",
+    "tool": "batch_video_generator",
+    "tool_label": "Batch Video Generator",
+    "output_name": "my_video.mp4",
+    "output_type": "video",
+    "output_url": "/outputs/my_video.mp4",
+    "file_extension": "mp4",
+    "duration_seconds": null,
+    "resolution": "720p",
+    "aspect_ratio": "9:16",
+    "render_profile": "fast_preview",
+    "file_size_bytes": 14808244,
+    "status": "completed",
+    "credit_cost": null,
+    "metadata": {
+      "batch_job_id": "batch_2e463cbf54a6",
+      "source_tool": "image_timeline",
+      "generated_via": "batch_queue"
+    }
+  },
+  {
+    "id": "hist_55c22a6df330",
+    "created_at": "2026-07-02T14:23:03.419039Z",
+    "tool": "batch_video_generator",
+    "tool_label": "Batch Video Generator",
+    "output_name": "my_video.mp4",
+    "output_type": "video",
+    "output_url": "/outputs/my_video.mp4",
+    "file_extension": "mp4",
+    "duration_seconds": 72.0,
+    "resolution": "720p",
+    "aspect_ratio": "9:16",
+    "render_profile": "fast_preview",
+    "file_size_bytes": 14808244,
+    "status": "completed",
+    "credit_cost": 10,
+    "metadata": {
+      "batch_job_id": "batch_09b50f1a37f7",
+      "source_tool": "image_timeline",
+      "generated_via": "batch_queue"
+    }
+  },
+  {
+    "id": "hist_f1cdb6048ddf",
+    "created_at": "2026-07-02T14:23:53.787954Z",
+    "tool": "script_timestamp",
+    "tool_label": "Script Timestamp",
+    "output_name": "transcript.csv",
+    "output_type": "text",
+    "output_url": "/outputs/text/transcript.csv",
+    "file_extension": "csv",
+    "duration_seconds": 9.142875,
+    "resolution": null,
+    "aspect_ratio": null,
+    "render_profile": null,
+    "file_size_bytes": 190,
+    "status": "completed",
+    "credit_cost": 1,
+    "metadata": {
+      "segments_count": 4,
+      "language": "en",
+      "model_name": "base",
+      "output_format": "csv"
+    }
+  },
+  {
+    "id": "hist_8de31d6f601b",
+    "created_at": "2026-07-02T14:46:12.162190Z",
+    "tool": "image_timeline",
+    "tool_label": "Image Timeline",
+    "output_name": "my_video.mp4",
+    "output_type": "video",
+    "output_url": "/outputs/my_video.mp4",
+    "file_extension": "mp4",
+    "duration_seconds": 72.0,
+    "resolution": "720p",
+    "aspect_ratio": "9:16",
+    "render_profile": "fast_preview",
+    "file_size_bytes": 14808244,
+    "status": "completed",
+    "credit_cost": 10,
+    "metadata": {
+      "text_overlay_enabled": false,
+      "text_overlay_mode": "whole_video"
+    }
   }
 ]

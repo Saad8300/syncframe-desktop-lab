@@ -870,6 +870,7 @@ def generate_media_timeline(
         else:
             logger.info("Final clip has audio: true")
             logger.info(f"Final visual duration: {main_video.duration:.2f}s, Final audio duration: {main_video.audio.duration:.2f}s")
+            final_duration = main_video.duration
             
         temp_audio_f = os.path.join(temp_dir, "temp_audio.mp4")
         
@@ -896,6 +897,7 @@ def generate_media_timeline(
             "errors": [],
             "visual_duration": visual_dur,
             "audio_duration": audio_dur,
+            "duration": final_duration if 'final_duration' in locals() else 0,
         }
         
     finally:

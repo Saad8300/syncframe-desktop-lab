@@ -21,6 +21,7 @@ import { usePlan } from '../hooks/usePlan'
 import { useCredits } from '../hooks/useCredits'
 import { AccessLimitModal } from './billing/AccessLimitModal'
 import { canUseTool } from '../lib/plans'
+import { dispatchToast } from '../utils/notifications'
 
 interface AudioPart {
   id: string
@@ -162,6 +163,7 @@ export default function AudioMergerPage() {
     })
     formData.append('output_format', outputFormat)
     formData.append('output_filename', outputName.trim() || 'merged_audio')
+    formData.append('credit_cost', String(estimatedCredits))
 
     try {
       const res = await fetch(`${API_BASE_URL}/api/tools/audio-merge`, {
@@ -219,7 +221,7 @@ export default function AudioMergerPage() {
       window.URL.revokeObjectURL(objectUrl)
     } catch (err) {
       console.error("Download failed", err)
-      alert("Failed to download the file directly. Please try saving it via the audio player.")
+      dispatchToast('info', 'Notice', String("Failed to download the file directly. Please try saving it via the audio player."))
     }
   }
 
@@ -241,7 +243,7 @@ export default function AudioMergerPage() {
 
       {/* ── Alerts ── */}
       {errorMsg && (
-        <div className="alert-error">
+        <div className="alert-error animate-slide-down">
           <IconAlertTriangle size={18} className="shrink-0" />
           <p className="text-sm font-medium">{errorMsg}</p>
         </div>
@@ -292,7 +294,7 @@ export default function AudioMergerPage() {
             ) : (
               <div className="space-y-2">
                 {parts.map((p, index) => (
-                  <div key={p.id} className="flex items-center justify-between p-3 rounded-lg border group transition-all"
+                  <div key={p.id} className="flex items-center justify-between p-3 rounded-lg border group transition-all hover:-translate-y-px hover:shadow-md"
                        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-6 h-6 rounded-md flex items-center justify-center font-bold text-xs shrink-0"
@@ -306,11 +308,11 @@ export default function AudioMergerPage() {
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <button onClick={() => moveUp(index)} disabled={index === 0 || status === 'merging'}
-                              className="w-7 h-7 rounded flex items-center justify-center hover:bg-black/10 disabled:opacity-30">
+                              className="w-7 h-7 rounded flex items-center justify-center hover:bg-black/10 disabled:opacity-30 transition-colors">
                         <span aria-hidden="true">&uarr;</span>
                       </button>
                       <button onClick={() => moveDown(index)} disabled={index === parts.length - 1 || status === 'merging'}
-                              className="w-7 h-7 rounded flex items-center justify-center hover:bg-black/10 disabled:opacity-30">
+                              className="w-7 h-7 rounded flex items-center justify-center hover:bg-black/10 disabled:opacity-30 transition-colors">
                         <span aria-hidden="true">&darr;</span>
                       </button>
                       <button onClick={() => removePart(p.id)} disabled={status === 'merging'}
@@ -348,9 +350,9 @@ export default function AudioMergerPage() {
                     description: 'Saved from Audio Merger', 
                     settings: { outputFormat, outputName } 
                   })
-                  alert('Template saved to your templates library!')
+                  dispatchToast('success', 'Success', String('Template saved to your templates library!'))
                 }} 
-                className="text-[10px] font-bold px-2 py-1 bg-[var(--bg-input)] hover:bg-[var(--accent-primary)] hover:text-white rounded border border-[var(--border-subtle)] transition-colors"
+                className="text-[10px] font-bold px-2 py-1 bg-[var(--bg-input)] hover:bg-[var(--accent-primary)] hover:text-white rounded border border-[var(--border-subtle)] transition-all duration-150"
               >
                 Save as Template
               </button>
@@ -392,12 +394,16 @@ export default function AudioMergerPage() {
             <button
               onClick={handleMerge}
               disabled={parts.length < 2 || status === 'merging'}
-              className="btn-primary w-full py-3.5 flex justify-center items-center gap-2"
+              className="w-full relative overflow-hidden transition-all duration-200 flex items-center justify-center gap-2 rounded-xl text-sm font-bold active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
-                background: parts.length >= 2 ? 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)' : 'var(--bg-input)',
+                height: 52,
+                background: parts.length >= 2 ? 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)' : 'var(--bg-elevated)',
                 boxShadow: parts.length >= 2 ? '0 4px 16px rgba(99,102,241,0.35)' : 'none',
-                opacity: parts.length < 2 || status === 'merging' ? 0.6 : 1,
+                color: parts.length >= 2 ? '#fff' : 'var(--text-muted)',
+                border: parts.length >= 2 ? 'none' : '1px solid var(--border-default)',
               }}
+              onMouseEnter={e => { if (parts.length >= 2) (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 8px 24px rgba(99,102,241,0.50)' }}
+              onMouseLeave={e => { if (parts.length >= 2) (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 16px rgba(99,102,241,0.35)' }}
             >
               {status === 'merging' ? (
                 <><IconLoader size={18} className="animate-spin" /> Merging...</>
@@ -414,51 +420,68 @@ export default function AudioMergerPage() {
               </p>
             )}
           </div>
-          
-          {/* Results Area */}
-          {status === 'success' && result && (
-            <div className="card p-5 space-y-4 border animate-fade-in" style={{ borderColor: 'var(--color-success-border)' }}>
-              <div className="flex items-center gap-2">
-                <IconPlayCircle size={18} style={{ color: 'var(--color-success-text)' }} />
-                <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Merge Complete!</h3>
-              </div>
-              
-              <div className="space-y-1 text-xs">
-                <div className="flex justify-between">
-                  <span style={{ color: 'var(--text-muted)' }}>Output Format:</span>
-                  <span className="font-medium">{result.output_format}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span style={{ color: 'var(--text-muted)' }}>Parts Merged:</span>
-                  <span className="font-medium">{result.parts_merged}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span style={{ color: 'var(--text-muted)' }}>Duration:</span>
-                  <span className="font-medium">{formatDuration(result.duration)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span style={{ color: 'var(--text-muted)' }}>Merge Order:</span>
-                  <span className="font-medium">{result.parts_merged} files</span>
-                </div>
-                <div className="flex justify-between">
-                  <span style={{ color: 'var(--text-muted)' }}>Filename:</span>
-                  <span className="font-mono font-medium truncate ml-2" title={result.filename}>{result.filename}</span>
-                </div>
-              </div>
-              
-              <audio src={result.url} controls className="w-full h-10 mt-2" />
-              
-              <button
-                onClick={handleDownload}
-                className="btn-primary w-full py-2.5 mt-2 flex justify-center items-center gap-2 text-sm"
-              >
-                <IconDownload size={16} /> Download Merged Audio
-              </button>
-            </div>
-          )}
         </div>
         
       </div>
+
+      {/* ── Full-Width Result Card ── */}
+      {status === 'success' && result && (
+        <div className="card p-0 overflow-hidden animate-slide-up" style={{ borderColor: 'var(--color-success-border)', borderWidth: 1, borderStyle: 'solid' }}>
+          {/* Green header strip */}
+          <div className="flex items-center gap-3 px-6 py-4" style={{ background: 'var(--color-success-bg)', borderBottom: '1px solid var(--color-success-border)' }}>
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid var(--color-success-border)' }}>
+              <IconPlayCircle size={18} style={{ color: 'var(--color-success)' }} />
+            </div>
+            <div>
+              <h3 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Merge Complete!</h3>
+              <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-success)' }}>Your audio parts have been merged successfully.</p>
+            </div>
+          </div>
+
+          <div className="p-6 space-y-6">
+            {/* Metadata grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+              {[
+                { label: 'Format',      value: result.output_format },
+                { label: 'Parts Merged',value: String(result.parts_merged) },
+                { label: 'Duration',    value: formatDuration(result.duration) },
+                { label: 'Merge Order', value: `${result.parts_merged} files (top → bottom)` },
+                { label: 'Filename',    value: result.filename },
+              ].map(({ label, value }) => (
+                <div key={label} className="rounded-xl p-3" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
+                  <p className="text-[9px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--text-muted)' }}>{label}</p>
+                  <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--text-primary)' }} title={value}>{value}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Audio player */}
+            <div className="rounded-xl overflow-hidden p-1" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
+              <audio
+                src={result.url}
+                controls
+                className="w-full"
+                style={{ height: 48, minHeight: 48, display: 'block' }}
+              />
+            </div>
+
+            {/* Download button */}
+            <button
+              onClick={handleDownload}
+              className="w-full flex items-center justify-center gap-3 rounded-xl font-bold text-sm text-white transition-all duration-200 active:scale-[0.98]"
+              style={{
+                height: 52,
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                boxShadow: '0 4px 16px rgba(16,185,129,0.30)',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 8px 24px rgba(16,185,129,0.45)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 16px rgba(16,185,129,0.30)' }}
+            >
+              <IconDownload size={18} /> Download Merged Audio
+            </button>
+          </div>
+        </div>
+      )}
     
       {/* Access Limit Modal */}
       <AccessLimitModal
@@ -473,3 +496,4 @@ export default function AudioMergerPage() {
       </main>
   )
 }
+

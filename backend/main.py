@@ -264,6 +264,7 @@ async def jobs_start(
     text_overlay_background_opacity: float = Form(50.0),
     text_overlay_mode: str = Form("whole_video"),
     text_overlay_items: str = Form("[]"),
+    credit_cost: Optional[int] = Form(None),
 ):
     """
     Accept uploaded files and settings, create a background job, return {job_id}.
@@ -529,7 +530,8 @@ async def jobs_start(
                                 metadata={
                                     "text_overlay_enabled": str(text_overlay_enabled).strip().lower() == "true",
                                     "text_overlay_mode": text_overlay_mode
-                                }
+                                },
+                                credit_cost=credit_cost
                             )
                         except Exception as e:
                             logger.error(f"Failed to add history: {e}")
@@ -642,7 +644,8 @@ async def jobs_start_script_timestamp(
     target_segment_length: Optional[str] = Form(None),
     max_words_per_line: Optional[str] = Form(None),
     split_on_punctuation: Optional[bool] = Form(True),
-    avoid_very_short_lines: Optional[bool] = Form(True)
+    avoid_very_short_lines: Optional[bool] = Form(True),
+    credit_cost: Optional[int] = Form(None)
 ):
     job_id = f"st_{uuid.uuid4().hex[:8]}"
     state = _new_job(job_id)
@@ -731,7 +734,8 @@ async def jobs_start_script_timestamp(
                         "language": res.get("language", language),
                         "model_name": res.get("model_name", model_name),
                         "output_format": output_format
-                    }
+                    },
+                    credit_cost=credit_cost
                 )
             except Exception as e:
                 logger.error(f"Failed to add history: {e}")
@@ -849,6 +853,7 @@ async def jobs_start_video_timeline(
     text_overlay_background_opacity: float = Form(50.0),
     text_overlay_mode: str = Form("whole_video"),
     text_overlay_items: str = Form("[]"),
+    credit_cost: Optional[int] = Form(None),
 ):
     """
     Accept uploaded files and settings for Video Timeline mode (Batch 10B + 10C).
@@ -1069,7 +1074,8 @@ async def jobs_start_video_timeline(
                                 metadata={
                                     "text_overlay_enabled": str(text_overlay_enabled).strip().lower() == "true",
                                     "text_overlay_mode": text_overlay_mode
-                                }
+                                },
+                                credit_cost=credit_cost
                             )
                         except Exception as e:
                             logger.error(f"Failed to add history: {e}")
@@ -1176,6 +1182,7 @@ async def jobs_start_media_timeline(
     text_overlay_background_opacity: float = Form(50.0),
     text_overlay_mode: str = Form("whole_video"),
     text_overlay_items: str = Form("[]"),
+    credit_cost: Optional[int] = Form(None),
 ):
     """
     Accept uploaded files and settings for Media Timeline mode (Batch 11B).
@@ -1392,7 +1399,8 @@ async def jobs_start_media_timeline(
                                 metadata={
                                     "text_overlay_enabled": str(text_overlay_enabled).strip().lower() == "true",
                                     "text_overlay_mode": text_overlay_mode
-                                }
+                                },
+                                credit_cost=credit_cost
                             )
                         except Exception as e:
                             logger.error(f"Failed to add history: {e}")
@@ -1557,7 +1565,8 @@ async def generate(
 async def audio_merge(
     audio_parts: List[UploadFile] = File(...),
     output_format: str = Form("wav"),
-    output_filename: str = Form("merged_audio")
+    output_filename: str = Form("merged_audio"),
+    credit_cost: Optional[int] = Form(None)
 ):
     import time
     job_id = f"audio_merge_{uuid.uuid4().hex[:8]}"
@@ -1598,7 +1607,8 @@ async def audio_merge(
                 file_extension=fmt,
                 duration_seconds=duration,
                 file_size_bytes=os.path.getsize(final_path) if os.path.exists(final_path) else None,
-                metadata={"parts_merged": meta["parts_merged"]}
+                metadata={"parts_merged": meta["parts_merged"]},
+                credit_cost=credit_cost
             )
         except Exception as e:
             logger.error(f"Failed to add history: {e}")
@@ -1717,6 +1727,8 @@ async def api_batch_job_image_timeline(
     enable_bg_music:   str   = Form("false"),
     music_volume:      float = Form(0.12),
     music_fade:        str   = Form("true"),
+    cjid:              Optional[str] = Form(None),
+    credit_cost:       Optional[int] = Form(None),
 ):
     # Create job ID and job dir
     import uuid
@@ -1783,6 +1795,8 @@ async def api_batch_job_image_timeline(
             "text_overlay_background_opacity": float(text_overlay_background_opacity),
             "text_overlay_mode": text_overlay_mode,
             "text_overlay_items": text_overlay_items,
+            "cjid": cjid,
+            "credit_cost": credit_cost,
         }
         
         # Save config.json
@@ -1863,6 +1877,8 @@ async def api_batch_job_video_timeline(
     text_overlay_items: str = Form("[]"),
     intro_file:    Optional[UploadFile] = File(None),
     outro_file:    Optional[UploadFile] = File(None),
+    cjid:              Optional[str] = Form(None),
+    credit_cost:       Optional[int] = Form(None),
 ):
     import uuid
     import json
@@ -1927,6 +1943,8 @@ async def api_batch_job_video_timeline(
             "text_overlay_background_opacity": float(text_overlay_background_opacity),
             "text_overlay_mode": text_overlay_mode,
             "text_overlay_items": text_overlay_items,
+            "cjid": cjid,
+            "credit_cost": credit_cost,
         }
         
         if watermark_text:
@@ -2008,6 +2026,8 @@ async def api_batch_job_media_timeline(
     background_music_fade:   bool  = Form(True),
     intro_file:    Optional[UploadFile] = File(None),
     outro_file:    Optional[UploadFile] = File(None),
+    cjid:              Optional[str] = Form(None),
+    credit_cost:       Optional[int] = Form(None),
 ):
     import uuid
     import json
@@ -2071,6 +2091,8 @@ async def api_batch_job_media_timeline(
             "text_overlay_background_opacity": float(text_overlay_background_opacity),
             "text_overlay_mode": text_overlay_mode,
             "text_overlay_items": text_overlay_items,
+            "cjid": cjid,
+            "credit_cost": credit_cost,
         }
         
         if watermark_text:
@@ -2253,6 +2275,13 @@ def api_start_batch_queue():
     if not access["allowed"]:
         raise HTTPException(403, access["reason"])
         
+    jobs = batch_queue_runner.list_jobs()
+    for job in jobs:
+        if job.get("status") == "queued":
+            config = job.get("config", {})
+            if not config.get("cjid"):
+                raise HTTPException(400, "Some queued jobs are missing credit reservations. Please remove and re-add them.")
+                
     res = batch_queue_runner.start_runner()
     return JSONResponse(content=res)
 

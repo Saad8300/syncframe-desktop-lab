@@ -339,7 +339,12 @@ export default function App() {
       }
       
       if (result.warnings && result.warnings.length > 0) {
-        alert("Warnings:\n" + result.warnings.join("\n"));
+        const warningLines = result.warnings;
+        let warningMsg = warningLines.slice(0, 10).join("\n");
+        if (warningLines.length > 10) {
+          warningMsg += `\n... and ${warningLines.length - 10} more warnings.`;
+        }
+        alert("Warnings:\n" + warningMsg);
       }
       
       const blob = new Blob([result.normalizedCsv], { type: 'text/csv' });
@@ -477,7 +482,7 @@ export default function App() {
     setStatus('uploading')
     try {
       const activeSettings = computeActiveSettings(settings);
-      const { job_id } = await startJob(audioInputMode, audioFile, audioZip, imagesZip, csvFile, activeSettings, introFile, outroFile, bgMusicFile)
+      const { job_id } = await startJob(audioInputMode, audioFile, audioZip, imagesZip, csvFile, activeSettings, introFile, outroFile, bgMusicFile, estimatedCredits)
       setCurrentJobId(job_id); setStatus('generating')
     } catch (err) {
       if (user) {
@@ -493,6 +498,14 @@ export default function App() {
     if (!requireAuth()) return;
     if ((audioInputMode === 'single' ? !audioFile : !audioZip) || !imagesZip || !csvFile) return
 
+    const durationSeconds = Math.max(1, Math.ceil(Number(audioDuration) || 60))
+
+    const estimatedCredits = await estimateCredits('video_export', {
+      resolution: settings.exportResolution,
+      is_premium_template: false,
+      duration_seconds: durationSeconds
+    })
+
     const access = canUseTool(plan, remaining, 'batch_video', {
       resolution: settings.exportResolution,
       is_batch: true
@@ -504,13 +517,37 @@ export default function App() {
       return
     }
 
+    let cjid: string | null = null
+    let reserved = false
+    if (user) {
+      cjid = crypto.randomUUID()
+      try {
+        await reserveCredits('video_export', durationSeconds, estimatedCredits, cjid, {
+          resolution: settings.exportResolution,
+          is_premium_template: false,
+          duration_seconds: durationSeconds
+        })
+        reserved = true
+      } catch (err: any) {
+        setLimitModalReason(err.message || "Internet connection is required to verify credits before batching.")
+        setLimitModalRequiredPlan(undefined)
+        setLimitModalOpen(true)
+        return
+      }
+    }
+
     setIsQueuing(true)
     setQueueSuccess(false)
     try {
-      const activeSettings = computeActiveSettings(settings);
-      await createImageTimelineBatchJob(audioInputMode, audioFile, audioZip, imagesZip, csvFile, activeSettings, introFile, outroFile, bgMusicFile)
+      const activeSettings = computeActiveSettings(settings) as any;
+      activeSettings.cjid = cjid
+      activeSettings.estimated_credits = estimatedCredits
+      await createImageTimelineBatchJob(audioInputMode, audioFile, audioZip, imagesZip, csvFile, activeSettings, introFile, outroFile, bgMusicFile, estimatedCredits)
       setQueueSuccess(true)
     } catch (err) {
+      if (user && cjid && reserved) {
+        await finalizeJob(cjid, 'failed').catch(console.error)
+      }
       alert("Failed to add to queue: " + err)
     } finally {
       setIsQueuing(false)
@@ -683,7 +720,7 @@ export default function App() {
       )}
 
       {/* ── View Router ── */}
-      <div key={`${activeView}-${refreshKey}`} className="animate-fade-in flex-1 flex flex-col min-w-0">
+      <div key={`${activeView}-${refreshKey}`} className="animate-fade-in-up flex-1 flex flex-col min-w-0">
         {/* Safe fallback for unknown views */}
         {![
           'landing', 'tools', 'dashboard', 'history', 'templates', 'settings',

@@ -46,6 +46,7 @@ import { AccessLimitModal } from './billing/AccessLimitModal'
 import { estimateCredits, reserveCredits, finalizeJob } from '../lib/credits'
 import { canUseTool, Plan } from '../lib/plans'
 import { parseTimelineCsv } from '../utils/timelineTimeParser'
+import { dispatchToast } from '../utils/notifications'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -376,20 +377,25 @@ export default function VideoTimelinePage() {
       const text = await file.text();
       const result = parseTimelineCsv(text, 'video');
       if (!result.success) {
-        alert("Invalid CSV:\n" + result.errors.join("\n"));
+        dispatchToast('info', 'Notice', String("Invalid CSV:\n" + result.errors.join("\n")));
         setCsvFile(null);
         return;
       }
       
       if (result.warnings && result.warnings.length > 0) {
-        alert("Warnings:\n" + result.warnings.join("\n"));
+        const warningLines = result.warnings;
+        let warningMsg = warningLines.slice(0, 10).join("\n");
+        if (warningLines.length > 10) {
+          warningMsg += `\n... and ${warningLines.length - 10} more warnings.`;
+        }
+        dispatchToast('info', 'Notice', String("Warnings:\n" + warningMsg));
       }
       
       const blob = new Blob([result.normalizedCsv], { type: 'text/csv' });
       const newFile = new File([blob], file.name, { type: 'text/csv' });
       setCsvFile(newFile);
     } catch (err) {
-      alert("Failed to read CSV file.");
+      dispatchToast('info', 'Notice', String("Failed to read CSV file."));
       setCsvFile(null);
     }
   };
@@ -574,7 +580,7 @@ export default function VideoTimelinePage() {
       const activeSettings = computeActiveSettings(settings);
       const { job_id } = await startVideoTimelineJob(
         audioInputMode, audioFile, audioZip, videosZip, csvFile, activeSettings,
-        introFile, outroFile,
+        introFile, outroFile, estimatedCredits
       )
       setCurrentJobId(job_id); setStatus('generating')
     } catch (err) {
@@ -618,10 +624,10 @@ export default function VideoTimelinePage() {
         }
       }
 
-      activeSettings.cjid = cjid
+      (activeSettings as any).cjid = cjid
       await createVideoTimelineBatchJob(
-        audioInputMode, audioFile, audioZip, videosZip, csvFile, activeSettings,
-        introFile, outroFile,
+        audioInputMode, audioFile, audioZip, videosZip, csvFile, activeSettings as any,
+        introFile, outroFile, estimatedCredits
       )
       
       // Do NOT call finalizeJob(cjid, 'success') immediately. 
@@ -633,7 +639,7 @@ export default function VideoTimelinePage() {
       if (user && cjid && reserved) {
         await finalizeJob(cjid, 'failed').catch(console.error)
       }
-      alert("Failed to add to queue: " + (err.message || err))
+      dispatchToast('info', 'Notice', String("Failed to add to queue: " + (err.message || err)))
     } finally {
       setIsAddingToQueue(false)
     }
@@ -808,7 +814,7 @@ export default function VideoTimelinePage() {
                     const name = window.prompt('Enter template name:', 'My Video Template')
                     if (name) {
                       saveTemplate({ name, tool: 'video', description: 'Saved from Video Timeline', settings })
-                      alert('Template saved to your templates library!')
+                      dispatchToast('success', 'Success', String('Template saved to your templates library!'))
                     }
                   }} 
                   className="text-[10px] font-bold px-2 py-1 bg-[var(--bg-input)] hover:bg-[var(--accent-primary)] hover:text-white rounded border border-[var(--border-subtle)] transition-colors"

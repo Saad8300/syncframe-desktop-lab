@@ -23,6 +23,7 @@ import {
 import { getHistory, deleteHistoryItem, clearHistory , resolveBackendUrl} from '../utils/api'
 import { loadSettings } from '../utils/appSettings'
 import StudioPageHeader from './StudioPageHeader'
+import { dispatchToast } from '../utils/notifications'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -36,12 +37,18 @@ function formatDate(iso: string) {
 }
 
 function formatDuration(seconds: number | undefined | null) {
-  if (seconds == null || isNaN(seconds)) return '—'
+  if (seconds == null || isNaN(seconds) || seconds === 0) return '—'
   const m = Math.floor(seconds / 60)
   const s = Math.floor(seconds % 60)
   if (m > 0) return `${m}m ${s}s`
   return `${s}s`
 }
+
+function formatCreditCost(cost: number | undefined | null) {
+  if (cost == null || isNaN(cost) || cost === 0) return '—'
+  return `${cost} cr`
+}
+
 
 function formatBytes(bytes: number | undefined | null) {
   if (bytes == null || isNaN(bytes)) return '—'
@@ -144,7 +151,7 @@ export default function StudioHistoryPage() {
       if (detailsItem?.id === id) setDetailsItem(null)
       setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n })
     } catch {
-      alert('Failed to delete history item')
+      dispatchToast('info', 'Notice', String('Failed to delete history item'))
     }
   }
 
@@ -160,7 +167,7 @@ export default function StudioHistoryPage() {
           }
           setHistory(prev => prev.filter(item => !selectedIds.has(item.id)))
           setSelectedIds(new Set())
-        } catch { alert('Failed to delete some items') }
+        } catch { dispatchToast('info', 'Notice', String('Failed to delete some items')) }
       }
     )
   }
@@ -173,11 +180,11 @@ export default function StudioHistoryPage() {
         "This will permanently remove all history records. It does not delete generated files from your disk.",
         async () => {
           try { await clearHistory(); setHistory([]); setSelectedIds(new Set()) } 
-          catch { alert('Failed to clear history') }
+          catch { dispatchToast('info', 'Notice', String('Failed to clear history')) }
         }
       )
     } else {
-      clearHistory().then(() => { setHistory([]); setSelectedIds(new Set()) }).catch(() => alert('Failed to clear history'))
+      clearHistory().then(() => { setHistory([]); setSelectedIds(new Set()) }).catch(() => dispatchToast('info', 'Notice', String('Failed to clear history')))
     }
   }
 
@@ -464,6 +471,7 @@ export default function StudioHistoryPage() {
                   <th className="px-5 py-4 font-bold text-[10px] uppercase tracking-widest hidden md:table-cell">Tool Source</th>
                   <th className="px-5 py-4 font-bold text-[10px] uppercase tracking-widest hidden lg:table-cell">Duration</th>
                   <th className="px-5 py-4 font-bold text-[10px] uppercase tracking-widest hidden xl:table-cell">Size</th>
+                  <th className="px-5 py-4 font-bold text-[10px] uppercase tracking-widest hidden xl:table-cell">Cost</th>
                   <th className="px-5 py-4 font-bold text-[10px] uppercase tracking-widest text-right">Actions</th>
                 </tr>
               </thead>
@@ -528,6 +536,9 @@ export default function StudioHistoryPage() {
                       <td className="px-5 py-3 text-xs font-medium hidden xl:table-cell" style={{ color: 'var(--text-secondary)' }}>
                         {formatBytes(item.file_size_bytes)}
                       </td>
+                      <td className="px-5 py-3 text-xs font-medium hidden xl:table-cell" style={{ color: 'var(--text-secondary)' }}>
+                        {formatCreditCost(item.credit_cost)}
+                      </td>
                       <td className="px-5 py-3">
                         <div className="flex items-center justify-end gap-1.5 opacity-40 group-hover:opacity-100 transition-opacity">
                           {item.output_url ? (
@@ -560,7 +571,7 @@ export default function StudioHistoryPage() {
               const isBatch = item.metadata?.from_batch_queue || item.from_batch_queue
               const isSelected = selectedIds.has(item.id)
               return (
-                <div key={item.id} className={`card p-4 flex flex-col relative transition-all duration-300 ${isSelected ? 'ring-2 ring-indigo-500 bg-indigo-500/5' : 'hover:-translate-y-1 hover:shadow-lg'}`}>
+                <div key={item.id} className={`card hover-lift p-4 flex flex-col relative transition-all duration-300 ${isSelected ? 'ring-2 ring-indigo-500 bg-indigo-500/5' : ''}`}>
                   <div className="absolute top-4 right-4 z-10">
                     <input type="checkbox" className="form-checkbox rounded text-indigo-500 w-4 h-4 cursor-pointer" checked={isSelected} onChange={() => toggleSelect(item.id)} />
                   </div>
@@ -583,10 +594,12 @@ export default function StudioHistoryPage() {
                     {item.output_name || 'Unnamed Export'}
                   </h4>
 
-                  <div className="flex items-center gap-2 mb-4 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                  <div className="flex flex-wrap items-center gap-2 mb-4 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
                     <span>{item.output_type}</span>
                     <span>•</span>
                     <span>{formatDuration(item.duration_seconds)}</span>
+                    <span>•</span>
+                    <span>{formatCreditCost(item.credit_cost)}</span>
                     {isBatch && (
                       <>
                         <span>•</span>
@@ -629,7 +642,7 @@ export default function StudioHistoryPage() {
       {/* ── Details Modal ── */}
       {detailsItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in" onClick={() => setDetailsItem(null)}>
-          <div className="card w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="card w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-modal-in" onClick={e => e.stopPropagation()}>
             <div className="p-5 flex items-center justify-between border-b bg-black/5 dark:bg-white/5" style={{ borderColor: 'var(--border-subtle)' }}>
               <div>
                 <h3 className="font-bold text-lg" style={{ color: 'var(--text-primary)' }}>Asset Details</h3>
@@ -647,6 +660,7 @@ export default function StudioHistoryPage() {
                 <ModalField label="Media Type" value={<span className="uppercase">{detailsItem.output_type}</span>} />
                 <ModalField label="Date Created" value={formatDate(detailsItem.created_at)} />
                 <ModalField label="Duration" value={formatDuration(detailsItem.duration_seconds)} />
+                <ModalField label="Credit Cost" value={formatCreditCost(detailsItem.credit_cost)} />
                 <ModalField label="File Size" value={formatBytes(detailsItem.file_size_bytes)} />
                 {(detailsItem.resolution || detailsItem.metadata?.export_resolution) && <ModalField label="Resolution" value={detailsItem.resolution || detailsItem.metadata?.export_resolution} />}
                 {(detailsItem.aspect_ratio || detailsItem.metadata?.aspect_ratio) && <ModalField label="Aspect Ratio" value={detailsItem.aspect_ratio || detailsItem.metadata?.aspect_ratio} />}
@@ -695,7 +709,7 @@ export default function StudioHistoryPage() {
       {/* ── Confirmation Modal ── */}
       {confirmAction && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-          <div className="card w-full max-w-sm p-6 shadow-2xl flex flex-col items-center text-center">
+          <div className="card w-full max-w-sm p-6 shadow-2xl flex flex-col items-center text-center animate-modal-in">
             <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4" style={{ background: 'var(--color-error-bg)', color: 'var(--color-error)' }}>
               <IconAlertCircle size={24} />
             </div>

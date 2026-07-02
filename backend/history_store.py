@@ -76,7 +76,8 @@ def add_history(
     aspect_ratio: Optional[str] = None,
     render_profile: Optional[str] = None,
     file_size_bytes: Optional[int] = None,
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None,
+    credit_cost: Optional[int] = None
 ) -> Dict[str, Any]:
     
     record = {
@@ -94,6 +95,7 @@ def add_history(
         "render_profile": render_profile,
         "file_size_bytes": file_size_bytes,
         "status": status,
+        "credit_cost": credit_cost,
         "metadata": metadata or {}
     }
     

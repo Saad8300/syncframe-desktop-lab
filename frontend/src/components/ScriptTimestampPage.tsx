@@ -21,6 +21,7 @@ import { useCredits } from '../hooks/useCredits'
 import { AccessLimitModal } from './billing/AccessLimitModal'
 import { estimateCredits, reserveCredits, finalizeJob } from '../lib/credits'
 import { canUseTool } from '../lib/plans'
+import { dispatchToast } from '../utils/notifications'
 
 function IconMic({ size = 24, style }: { size?: number; style?: React.CSSProperties }) {
   return (
@@ -276,6 +277,8 @@ export default function ScriptTimestampPage() {
       formData.append('split_on_punctuation', splitOnPunctuation ? 'true' : 'false')
       formData.append('avoid_very_short_lines', avoidVeryShortLines ? 'true' : 'false')
     }
+    
+    formData.append('credit_cost', String(estimatedCredits))
 
     try {
       const res = await fetch(`${API_BASE_URL}/api/jobs/start-script-timestamp`, {
@@ -491,7 +494,7 @@ export default function ScriptTimestampPage() {
                       description: 'Saved from Script Timestamp', 
                       settings: { modelKey, language, outputStyle, segmentationIntensity, outputMode, outputName } 
                     })
-                    alert('Template saved to your templates library!')
+                    dispatchToast('success', 'Success', String('Template saved to your templates library!'))
                   }
                 }} 
                 className="text-[10px] font-bold px-2 py-1 bg-[var(--bg-input)] hover:bg-[var(--accent-primary)] hover:text-white rounded border border-[var(--border-subtle)] transition-colors"

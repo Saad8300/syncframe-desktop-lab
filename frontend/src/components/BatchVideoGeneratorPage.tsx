@@ -22,6 +22,7 @@ import { AccessLimitModal } from './billing/AccessLimitModal'
 import { finalizeJob } from '../lib/credits'
 import type { ToolAccessResult } from '../lib/plans'
 import { canUseTool } from '../lib/plans'
+import { dispatchToast } from '../utils/notifications'
 
 export default function BatchVideoGeneratorPage() {
   const { requireAuth, user } = useAuth()
@@ -133,7 +134,7 @@ export default function BatchVideoGeneratorPage() {
 
   const handleDelete = async (id: string) => {
     if (batchState?.current_job_id === id) {
-      alert("Cannot delete a running job. Stop the queue after current job first.")
+      dispatchToast('info', 'Notice', String("Cannot delete a running job. Stop the queue after current job first."))
       return
     }
     requireConfirm(
@@ -141,29 +142,29 @@ export default function BatchVideoGeneratorPage() {
       "Are you sure you want to remove this job from the queue?",
       async () => {
         try { await deleteBatchJob(id); loadData(); if(selectedJob?.id===id) setSelectedJob(null) } 
-        catch (err) { alert("Failed to delete job: " + err) }
+        catch (err) { dispatchToast('info', 'Notice', String("Failed to delete job: " + err)) }
       }
     )
   }
 
   const handleClearCompleted = () => requireConfirm(
     "Clear Completed", "Remove all completed jobs from the queue?", 
-    async () => { try { await clearCompletedBatchJobs(); loadData() } catch(err){ alert(err) } }
+    async () => { try { await clearCompletedBatchJobs(); loadData() } catch(err){ dispatchToast('info', 'Notice', String(err)) } }
   )
 
   const handleClearFailed = () => requireConfirm(
     "Clear Failed", "Remove all failed jobs from the queue?", 
-    async () => { try { await clearFailedBatchJobs(); loadData() } catch(err){ alert(err) } }
+    async () => { try { await clearFailedBatchJobs(); loadData() } catch(err){ dispatchToast('info', 'Notice', String(err)) } }
   )
 
   const handleClearAll = () => requireConfirm(
     "Clear All Jobs", "This will permanently remove all jobs (except running ones). History logs are preserved.", 
-    async () => { try { await clearAllBatchJobs(); loadData() } catch(err){ alert(err) } }
+    async () => { try { await clearAllBatchJobs(); loadData() } catch(err){ dispatchToast('info', 'Notice', String(err)) } }
   )
 
   const handleMoveUp = async (id: string) => { try { await moveBatchJobUp(id); loadData() } catch (err) {} }
   const handleMoveDown = async (id: string) => { try { await moveBatchJobDown(id); loadData() } catch (err) {} }
-  const handleDuplicate = async (id: string) => { try { await duplicateBatchJob(id); loadData() } catch (err) { alert("Duplicate failed: " + err) } }
+  const handleDuplicate = async (id: string) => { try { await duplicateBatchJob(id); loadData() } catch (err) { dispatchToast('info', 'Notice', String("Duplicate failed: " + err)) } }
 
   const handleStartQueue = async () => {
     if (!requireAuth()) return
@@ -173,7 +174,7 @@ export default function BatchVideoGeneratorPage() {
     if (user) {
       const missingCjid = pendingJobs.some((j: any) => !j.config?.cjid)
       if (missingCjid) {
-        alert("Some queued jobs are missing credit reservations. Please remove and re-add them.")
+        dispatchToast('info', 'Notice', String("Some queued jobs are missing credit reservations. Please remove and re-add them."))
         return
       }
     }
@@ -183,32 +184,32 @@ export default function BatchVideoGeneratorPage() {
       await startBatchQueue(); 
       await loadData() 
     } catch (e) { 
-      alert("Start failed: " + e) 
+      dispatchToast('info', 'Notice', String("Start failed: " + e)) 
     } 
     finally { setIsQueueLoading(false) }
   }
 
   const handlePauseQueue = async () => {
     setIsQueueLoading(true)
-    try { await pauseBatchAfterCurrent(); await loadData() } catch (e) { alert("Pause failed: " + e) } 
+    try { await pauseBatchAfterCurrent(); await loadData() } catch (e) { dispatchToast('info', 'Notice', String("Pause failed: " + e)) } 
     finally { setIsQueueLoading(false) }
   }
 
   const handleStopQueue = async () => {
     setIsQueueLoading(true)
-    try { await stopBatchQueue(); await loadData() } catch (e) { alert("Stop failed: " + e) } 
+    try { await stopBatchQueue(); await loadData() } catch (e) { dispatchToast('info', 'Notice', String("Stop failed: " + e)) } 
     finally { setIsQueueLoading(false) }
   }
 
   const handleRetryFailed = async () => {
     setIsQueueLoading(true)
-    try { await retryFailedBatchJobs(); await loadData() } catch (e) { alert("Retry failed: " + e) } 
+    try { await retryFailedBatchJobs(); await loadData() } catch (e) { dispatchToast('info', 'Notice', String("Retry failed: " + e)) } 
     finally { setIsQueueLoading(false) }
   }
 
   const handleRetrySingle = async (id: string) => {
     if (!requireAuth()) return
-    try { await retryBatchJob(id); await loadData() } catch (e) { alert("Retry failed: " + e) }
+    try { await retryBatchJob(id); await loadData() } catch (e) { dispatchToast('info', 'Notice', String("Retry failed: " + e)) }
   }
 
   const filteredJobs = jobs.filter(job => {

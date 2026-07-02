@@ -10,6 +10,7 @@ import {
 } from '../utils/notificationSettings'
 import { testNotification, requestDesktopNotificationPermission } from '../utils/notifications'
 import StudioPageHeader from './StudioPageHeader'
+import { dispatchToast } from '../utils/notifications'
 
 export default function StudioSettingsPage() {
   const [settings, setSettings] = useState<AppSettings | null>(null)
@@ -37,7 +38,7 @@ export default function StudioSettingsPage() {
     if (key === 'desktopNotifications' && value === true) {
       const granted = await requestDesktopNotificationPermission()
       if (!granted) {
-        alert("Desktop notifications are blocked or not supported by your browser.")
+        dispatchToast('info', 'Notice', String("Desktop notifications are blocked or not supported by your browser."))
         return
       }
     }

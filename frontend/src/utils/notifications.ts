@@ -9,7 +9,7 @@ export interface ToastEventPayload {
 }
 
 // Emits a custom event that the NotificationToastProvider will listen to
-function dispatchToast(type: ToastType, title: string, message?: string) {
+export function dispatchToast(type: ToastType, title: string, message?: string) {
   const payload: ToastEventPayload = { type, title, message }
   const event = new CustomEvent('syncframe-toast', { detail: payload })
   window.dispatchEvent(event)
@@ -70,7 +70,7 @@ function showDesktopNotification(title: string, body?: string) {
 }
 
 // The core trigger function
-function triggerNotification(
+export function triggerNotification(
   type: ToastType,
   title: string,
   message?: string,

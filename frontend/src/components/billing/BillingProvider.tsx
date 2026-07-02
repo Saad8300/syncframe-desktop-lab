@@ -9,6 +9,7 @@ interface BillingContextValue {
   credits: any | null
   remaining: number
   initialLoading: boolean
+  initialized: boolean
   refreshing: boolean
   error: string | null
   refresh: () => Promise<void>
@@ -26,6 +27,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
   const [remaining, setRemaining] = useState<number>(30)
   
   const [initialLoading, setInitialLoading] = useState(true)
+  const [initialized, setInitialized] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -69,6 +71,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
       setInitialLoading(true)
     } else {
       setInitialLoading(false)
+      setInitialized(true)  // we have cached data — mark as initialized immediately
     }
     setRefreshing(true)
     setError(null)
@@ -134,6 +137,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
       setError(err.message)
     } finally {
       setInitialLoading(false)
+      setInitialized(true)
       setRefreshing(false)
     }
   }
@@ -157,7 +161,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <BillingContext.Provider value={{ plan, subscription, credits, remaining, initialLoading, refreshing, error, refresh }}>
+    <BillingContext.Provider value={{ plan, subscription, credits, remaining, initialLoading, initialized, refreshing, error, refresh }}>
       {children}
     </BillingContext.Provider>
   )

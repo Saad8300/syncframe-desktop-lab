@@ -155,7 +155,7 @@ const UPCOMING_TOOLS: {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function StudioToolsPage({ onSelectTool }: Props) {
-  const { plan, loading: planLoading } = usePlan()
+  const { plan, initialized: planInitialized } = usePlan()
   const { remaining } = useCredits()
 
   // Access Limit Modal state
@@ -164,7 +164,7 @@ export default function StudioToolsPage({ onSelectTool }: Props) {
   const [limitModalRequiredPlan, setLimitModalRequiredPlan] = useState<string | undefined>(undefined)
 
   const handleSelectTool = (toolId: ViewMode) => {
-    const access = canUseTool(plan, remaining, toolId, { is_batch: toolId === 'batch_video' }, 0, planLoading)
+    const access = canUseTool(plan, remaining, toolId, { is_batch: toolId === 'batch_video' }, 0, !planInitialized)
     if (!access.allowed) {
       setLimitModalReason(access.reason)
       setLimitModalRequiredPlan(access.requiredPlan)
@@ -191,7 +191,7 @@ export default function StudioToolsPage({ onSelectTool }: Props) {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
           {ACTIVE_TOOLS.map(tool => {
-            const access = canUseTool(plan, remaining, tool.id, { is_batch: tool.id === 'batch_video' }, 0, planLoading)
+            const access = canUseTool(plan, remaining, tool.id, { is_batch: tool.id === 'batch_video' }, 0, !planInitialized)
             const isCheckingPlan = !access.allowed && access.reason === 'Checking plan...'
             return (
               <ActiveToolCard
@@ -256,7 +256,7 @@ function ActiveToolCard({
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="group flex flex-col gap-4 text-left rounded-2xl p-5 transition-all duration-200"
+      className="tool-card group flex flex-col gap-4 text-left rounded-2xl p-5"
       style={{
         cursor: 'pointer',
         outline: 'none',
@@ -269,7 +269,6 @@ function ActiveToolCard({
         boxShadow: hovered
           ? `0 8px 32px ${tool.accentColor}25, 0 2px 8px rgba(0,0,0,0.2)`
           : 'var(--shadow-card)',
-        transform: hovered ? 'translateY(-2px)' : 'translateY(0)',
       }}
     >
       <div className="flex items-start justify-between w-full">
