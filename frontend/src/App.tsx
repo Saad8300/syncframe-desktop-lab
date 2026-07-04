@@ -815,9 +815,9 @@ export default function App() {
 
       {activeView === 'tool:audio_merger' && <AudioMergerPage />}
       {activeView === 'tool:script_timestamp' && <ScriptTimestampPage />}
-      {activeView === 'tool:media' && <MediaTimelinePage />}
+      {activeView === 'tool:media' && <MediaTimelinePage onNavigate={(v: string) => setActiveView(v as any)} />}
       {(activeView === 'tool:batch_video' || activeView === 'batch_video') && <BatchVideoGeneratorPage />}
-      {activeView === 'tool:video' && <VideoTimelinePage />}
+      {activeView === 'tool:video' && <VideoTimelinePage onNavigate={(v: string) => setActiveView(v as any)} />}
 
       {activeView === 'tool:image' && (
         <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-6">

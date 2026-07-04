@@ -33,11 +33,11 @@ from video_timeline_generator import (
     _apply_visual_style_to_clip,
     _apply_transition_to_pair,
     _load_media_clip,
-    _make_watermark_overlay,
+    _make_black_clip
 )
 
 from media_helpers import apply_motion_to_clip, mix_background_music, pad_clip_to_size
-
+from text_overlay import make_text_overlay
 logger = logging.getLogger(__name__)
 
 # Pillow compatibility shim
@@ -83,12 +83,6 @@ class MediaTimelineError(Exception):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _make_black_clip(width: int, height: int, duration: float, fps: int):
-    frame = np.zeros((height, width, 3), dtype=np.uint8)
-    clip = ImageClip(frame, duration=duration)
-    clip = clip.set_fps(fps)
-    return clip
 
 def _make_text_overlay_frame(
     width: int, height: int, text: str,
@@ -292,178 +286,85 @@ def extract_media_zip(zip_path: str, dest_dir: str) -> dict[str, str]:
     return media_map
 
 def parse_media_csv(csv_path: str, media_map: dict[str, str]) -> tuple[bool, list[dict], float, list[str], list[str], str]:
-    rows: list[dict] = []
-    warnings: list[str] = []
-    errors: list[str] = []
-
     with open(csv_path, newline="", encoding="utf-8-sig") as f:
         content = f.read()
 
-    reader = csv.DictReader(io.StringIO(content))
-    if reader.fieldnames is None:
-        errors.append("CSV is empty or has no header row.")
-        return False, rows, 0.0, errors, warnings, ""
+    try:
+        from timeline_time_parser import parse_timeline_csv as shared_parse
+    except ImportError:
+        from backend.timeline_time_parser import parse_timeline_csv as shared_parse
+    success, parsed_rows, total_dur, errors, warnings, norm_csv = shared_parse(content, "media")
 
-    lower_fields = [f.lower().strip() for f in reader.fieldnames]
+    if not success:
+        return False, [], 0.0, errors, warnings, ""
+
+    valid_rows = []
+    prev_end = 0.0
     
-    start_col = next((f for f in lower_fields if f == "start"), None)
-    end_col   = next((f for f in lower_fields if f == "end"), None)
-    asset_col = next((f for f in lower_fields if "asset" in f or "image" in f or "video" in f), None)
-    text_col  = next((f for f in lower_fields if f == "text"), None)
-    
-    # Optional styling columns
-    pos_col   = next((f for f in lower_fields if f == "text_position"), None)
-    size_col  = next((f for f in lower_fields if f == "text_size"), None)
-    color_col = next((f for f in lower_fields if f == "text_color"), None)
-    bg_col    = next((f for f in lower_fields if f == "text_background"), None)
-    align_col = next((f for f in lower_fields if f == "text_alignment"), None)
-
-    if not start_col: errors.append("CSV is missing required column: start")
-    if not end_col: errors.append("CSV is missing required column: end")
-    if not asset_col: errors.append("CSV is missing required column: asset")
-    if errors:
-        return rows, warnings, errors
-
-    reader.fieldnames = lower_fields
-
-    parsed_raw_rows = []
-    for idx, row in enumerate(reader, start=2):
-        s_str = row.get(start_col, "").strip()
-        e_str = row.get(end_col, "").strip()
-        asset_str = row.get(asset_col, "").strip()
-        text_str = row.get(text_col, "").strip() if text_col else ""
+    for i, r in enumerate(parsed_rows):
+        r = dict(r or {})
+        row_idx = r.get("row_idx") or r.get("row_number") or r.get("line_number") or i + 2
+        r["row_idx"] = row_idx
+        r["row_number"] = row_idx
+        r["text"] = str(r.get("text") or r.get("text_str") or "")
+        r["text_str"] = r["text"]
         
-        # Override styles
-        t_pos   = row.get(pos_col, "").strip() if pos_col else ""
-        t_size  = row.get(size_col, "").strip() if size_col else ""
-        t_col   = row.get(color_col, "").strip() if color_col else ""
-        t_bg    = row.get(bg_col, "").strip() if bg_col else ""
-        t_align = row.get(align_col, "").strip() if align_col else ""
-
-        if not s_str and not e_str and not asset_str and not text_str:
-            continue
-
-        try:
-            from backend.timeline_time_parser import parse_time_to_seconds
-            start_parsed = parse_time_to_seconds(s_str, allow_relative=False)
-            if start_parsed is None:
-                errors.append(f"CSV row {idx} has invalid start time: {s_str}")
-                continue
-            start_sec = float(start_parsed)
-        except Exception:
-            errors.append(f"CSV row {idx} has invalid start time: {s_str}")
-            continue
-            
-        try:
-            end_parsed = parse_time_to_seconds(e_str, allow_relative=True)
-            if end_parsed is None:
-                errors.append(f"CSV row {idx} has invalid end time: {e_str}")
-                continue
-            end_sec = float(end_parsed)
-        except Exception:
-            errors.append(f"CSV row {idx} has invalid end time: {e_str}")
-            continue
-
-        if start_sec >= end_sec:
-            errors.append(f"CSV row {idx} end time must be greater than start time")
-            continue
-
-        if not asset_str and not text_str:
-            errors.append(f"CSV row {idx} has no asset and no text. Add an asset filename or text.")
-            continue
-
+        asset_str = r.get("file") or r.get("image") or r.get("video") or r.get("media") or r.get("filename") or ""
+        start_sec = r.get("start", 0.0)
+        end_sec = r.get("end", 0.0)
+        
         asset_path = None
         asset_type = "none"
         if asset_str:
             ext = Path(asset_str).suffix.lower()
             if ext not in ALLOWED_EXTS:
-                errors.append(f"CSV row {idx} references \"{asset_str}\", but this file type is not supported.")
+                errors.append(f"Row {row_idx} references \"{asset_str}\", but this file type is not supported.")
                 continue
                 
             asset_path = media_map.get(asset_str.lower())
             if not asset_path:
-                errors.append(f"CSV row {idx} references \"{asset_str}\", but it was not found in the Media ZIP. Make sure the asset name in the CSV exactly matches the filename inside the ZIP.")
+                errors.append(f"Row {row_idx} references \"{asset_str}\", but it was not found in the Media ZIP.")
                 continue
                 
             if ext in VIDEO_EXTS:
                 asset_type = "video"
             elif ext in IMAGE_EXTS:
                 asset_type = "image"
-
-        parsed_raw_rows.append({
-            "idx": idx,
+        else:
+            if not r.get("text_str") and not r.get("text"):
+                errors.append(f"CSV row {row_idx} is missing both a media filename and text.")
+                continue
+                
+        # Insert black gap if needed
+        if start_sec > prev_end:
+            gap = start_sec - prev_end
+            valid_rows.append({
+                "row_idx": row_idx,
+                "type": "black",
+                "start": prev_end,
+                "end": start_sec,
+                "duration": gap
+            })
+            
+        dur = end_sec - start_sec
+        valid_rows.append({
+            "row_idx": row_idx,
+            "type": "media",
             "start": start_sec,
             "end": end_sec,
+            "duration": dur,
             "asset_str": asset_str,
             "asset_path": asset_path,
             "asset_type": asset_type,
-            "text_str": text_str,
-            "t_pos": t_pos, "t_size": t_size, "t_col": t_col, "t_bg": t_bg, "t_align": t_align,
+            "text_str": r.get("text", "") or r.get("text_str", ""),
+            "t_pos": "", "t_size": "", "t_col": "", "t_bg": "", "t_align": ""
         })
+        prev_end = end_sec
+    if not valid_rows and not errors:
+        errors.append("CSV has no valid data rows.")
+        return False, [], 0.0, errors, warnings, ""
 
-    if errors:
-        return False, rows, 0.0, errors, warnings, ""
-
-    # Safe sorting
-    parsed_raw_rows.sort(key=lambda r: r["start"])
-
-    prev_end = 0.0
-    prev_idx = None
-    for r in parsed_raw_rows:
-        if r["start"] < prev_end:
-            errors.append(f"CSV rows {prev_idx} and {r['idx']} overlap. Please fix timeline timings.")
-            continue
-            
-        if r["start"] > prev_end:
-            gap = r["start"] - prev_end
-            rows.append({
-                "type": "gap",
-                "start": prev_end,
-                "end": r["start"],
-                "duration": gap,
-            })
-
-        rows.append({
-            "type": "content",
-            "start": r["start"],
-            "end": r["end"],
-            "duration": r["end"] - r["start"],
-            "asset_name": r["asset_str"],
-            "asset_path": r["asset_path"],
-            "asset_type": r["asset_type"],
-            "text": r["text_str"],
-            "text_position": r["t_pos"],
-            "text_size": r["t_size"],
-            "text_color": r["t_col"],
-            "text_background": r["t_bg"],
-            "text_alignment": r["t_align"],
-            "row_idx": r["idx"],
-        })
-        prev_end = r["end"]
-        prev_idx = r["idx"]
-
-    if not any(r["type"] == "content" for r in rows):
-        if not errors:
-            errors.append("No valid content rows found in CSV.")
-            return False, rows, 0.0, errors, warnings, ""
-
-    # Format normalized_csv
-    out_csv_lines = ["start,end,asset,text"]
-    for r in rows:
-        if r["type"] == "content":
-            asset_name = r["asset_name"]
-            if "," in asset_name or '"' in asset_name or "\n" in asset_name or "\r" in asset_name:
-                asset_name = f'"{asset_name.replace(chr(34), chr(34)+chr(34))}"'
-            
-            text_str = r["text"]
-            if "," in text_str or '"' in text_str or "\n" in text_str or "\r" in text_str:
-                text_str = f'"{text_str.replace(chr(34), chr(34)+chr(34))}"'
-                
-            out_csv_lines.append(f'{r["start"]},{r["end"]},{asset_name},{text_str}')
-            
-    normalized_csv = "\n".join(out_csv_lines)
-    total_dur = rows[-1]["end"] if rows else 0.0
-    return True, rows, total_dur, errors, warnings, normalized_csv
+    return True, valid_rows, prev_end, errors, warnings, norm_csv
 
 # ---------------------------------------------------------------------------
 # Core Generator
@@ -490,17 +391,10 @@ def generate_media_timeline(
     transition_duration: float = 0.5,
     visual_effect: str = "none",
     effect_strength: str = "medium",
-    watermark_text: str = "",
-    watermark_position_mode: str = "preset",
-    watermark_coordinate_mode: str = "design_canvas",
-    watermark_position: str = "bottom_right",
-    watermark_x: int = 50,
-    watermark_y: int = 50,
-    watermark_opacity: float = 0.65,
-    watermark_size: int = 20,
-    watermark_margin: int = 36,
+
     motion_style: str = "none",
     motion_intensity: str = "medium",
+    text_overlay_config: Optional[dict] = None,
     background_music_path: Optional[str] = None,
     background_music_volume: float = 15.0,
     background_music_loop: bool = True,
@@ -525,7 +419,7 @@ def generate_media_timeline(
     check_cancel()
 
     report(10, "Parsing timeline CSV...")
-    success, rows, total_dur, warnings, errors, norm_csv = parse_media_csv(csv_path, media_map)
+    success, rows, total_dur, errors, warnings, norm_csv = parse_media_csv(csv_path, media_map)
     if errors:
         return {"success": False, "warnings": warnings, "errors": errors, "timeline": []}
         
@@ -551,8 +445,8 @@ def generate_media_timeline(
         for idx, row in enumerate(rows):
             check_cancel()
             
-            dur = row["duration"]
-            c_type = row["type"]
+            dur = row.get("duration", 0.0)
+            c_type = row.get("type", "gap")
             
             if dur <= 0:
                 warnings.append(f"Skipping row with invalid duration: {dur}s")
@@ -567,9 +461,9 @@ def generate_media_timeline(
                 continue
                 
             # It's a content row
-            asset_type = row["asset_type"]
-            asset_path = row["asset_path"]
-            text_str = row["text"]
+            asset_type = row.get("asset_type", "none")
+            asset_path = row.get("asset_path")
+            text_str = row.get("text_str", "") or row.get("text", "")
             
             base_clip = None
             
@@ -580,7 +474,7 @@ def generate_media_timeline(
                     
                     v_dur = raw.duration
                     if v_dur <= 0.1:
-                        warnings.append(f"Row {row['row_idx']}: video too short ({v_dur}s).")
+                        warnings.append(f"Row {row.get('row_idx', idx + 2)}: video too short ({v_dur}s).")
                         base_clip = _make_black_clip(width, height, dur, fps)
                     else:
                         if dur > v_dur:
@@ -661,16 +555,16 @@ def generate_media_timeline(
                     pos=row_pos, size=row_sz, color=row_col, bg=row_bg, width_mode=row_wid, align=row_aln
                 )
                 if font_reduced:
-                    warnings.append(f"Text on row {row['row_idx']} was very long, so font size was reduced to fit safely.")
+                    warnings.append(f"Text on row {row.get('row_idx', idx + 2)} was very long, so font size was reduced to fit safely.")
                 base_clip = CompositeVideoClip([base_clip, txt_clip])
                 
             base_clip = base_clip.set_fps(fps)
-            _validate_clip(base_clip, f"Row {row['row_idx']}")
+            _validate_clip(base_clip, f"Row {row.get('row_idx', idx + 2)}")
             final_clips.append(base_clip)
             visual_dur += dur
             
             timeline_report.append({
-                "image": row["asset_name"],
+                "image": row.get("asset_str", ""),
                 "start": row["start"],
                 "end": row["end"],
                 "duration": dur,
@@ -678,6 +572,16 @@ def generate_media_timeline(
                 "status": "ok",
             })
             
+        if errors:
+            return {
+                "success": False,
+                "timeline": timeline_report,
+                "warnings": warnings,
+                "errors": errors,
+                "visual_duration": visual_dur,
+                "audio_duration": audio_dur,
+            }
+
         report(60, "Padding audio/video to match durations...")
         
         # Match audio and visual duration
@@ -760,44 +664,17 @@ def generate_media_timeline(
 
         main_video = main_video.set_audio(final_audio)
 
-        # Watermark
-        use_wm = bool(watermark_text.strip())
-        if use_wm:
-            report(70, "Applying watermark...")
-            try:
-                wm_overlay = _make_watermark_overlay(
-                    width=width, height=height,
-                    text=watermark_text,
-                    position_mode=watermark_position_mode,
-                    position=watermark_position,
-                    coordinate_mode=watermark_coordinate_mode,
-                    aspect_ratio=aspect_ratio,
-                    x_pos=watermark_x, y_pos=watermark_y,
-                    opacity=watermark_opacity,
-                    size=watermark_size, margin=watermark_margin,
-                )
-                if watermark_position_mode == "custom" and watermark_coordinate_mode == "final_pixels":
-                    # basic safety check for warning
-                    if watermark_x < 0 or watermark_y < 0 or watermark_x > width * 0.9 or watermark_y > height * 0.9:
-                        warnings.append("Watermark custom X/Y places the watermark partly outside the frame.")
-                wm_clip = ImageClip(wm_overlay, ismask=False).set_duration(visual_dur).set_fps(fps)
-                
-                # Extract audio to preserve it during visual composite
-                saved_audio = main_video.audio
-                main_video = CompositeVideoClip([main_video.without_audio(), wm_clip], size=(width, height))
-                if saved_audio:
-                    main_video = main_video.set_audio(saved_audio)
-            except Exception as e:
-                warnings.append(f"Watermark failed to apply: {e}")
-
-
         # ── Step 7.5: Text Overlay (Batch 16A) ────────────────────────────────
-        if text_overlay_config and text_overlay_config.get("enabled"):
+        text_overlay_config = text_overlay_config or {}
+        overlay_enabled = bool(text_overlay_config.get("enabled", False))
+        overlay_text = str(text_overlay_config.get("text") or text_overlay_config.get("overlay_text") or text_overlay_config.get("text_overlay_text") or "")
+
+        if overlay_enabled and overlay_text.strip():
             report(72, "Applying text overlay")
             overlay_arr = make_text_overlay(
                 target_w=width,
                 target_h=height,
-                text=text_overlay_config.get("text", ""),
+                text=overlay_text,
                 font_family=text_overlay_config.get("font_family", "Inter"),
                 font_size_percent=text_overlay_config.get("font_size_percent", 5.0),
                 font_weight=text_overlay_config.get("font_weight", "Bold"),

@@ -40,6 +40,7 @@ interface AuthContextValue {
   signInWithGoogle: () => Promise<void>
   signInWithPassword: (email: string, pass: string) => Promise<void>
   signUp: (email: string, pass: string) => Promise<void>
+  resetPassword: (email: string) => Promise<void>
   signOut: () => Promise<void>
 }
 
@@ -85,6 +86,7 @@ const AuthContext = createContext<AuthContextValue>({
   signInWithGoogle: async () => {},
   signInWithPassword: async () => {},
   signUp: async () => {},
+  resetPassword: async () => {},
   signOut: async () => {},
 })
 
@@ -247,6 +249,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // the UI component should check if session is null after signup to show a message.
   }, [configured])
 
+  const resetPassword = useCallback(async (email: string) => {
+    if (!configured || !supabase) {
+      throw new Error('Supabase auth is not configured.')
+    }
+    setAuthError(null)
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin, // Best effort fallback for desktop
+    })
+    if (error) {
+      setAuthError(error.message)
+      throw error
+    }
+  }, [configured])
+
   const signOut = useCallback(async () => {
     if (!supabase) {
       setSession(null)
@@ -276,6 +292,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signInWithGoogle,
         signInWithPassword,
         signUp,
+        resetPassword,
         signOut,
       }}
     >

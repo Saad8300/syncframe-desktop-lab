@@ -207,8 +207,8 @@ function MediaDropZone({
 function MediaTimelineResult({
   result, rowCount, settings,
 }: { result: GenerateResponse; rowCount: number; settings: MediaTimelineSettings }) {
-  const videoUrl = resolveBackendUrl(result.output_video_url || "")
-  const hasVideo = result.success && videoUrl
+  const videoUrl = result.success && result.output_video_url ? `${resolveBackendUrl(result.output_video_url)}?t=${Date.now()}` : ""
+  const hasVideo = result.success && !!videoUrl
   const filename = result.output_filename ?? 'media_timeline.mp4'
 
   let imageRows = 0
@@ -309,7 +309,7 @@ function MediaTimelineResult({
 
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
-export default function MediaTimelinePage() {
+export default function MediaTimelinePage({ onNavigate }: { onNavigate?: (view: string) => void }) {
   const { requireAuth, user } = useAuth()
   const { plan } = usePlan()
   const { remaining } = useCredits()
@@ -432,8 +432,8 @@ export default function MediaTimelinePage() {
         output_video_url: statusData.output_video_url,
         output_filename: statusData.output_filename ?? undefined,
         timeline_report: statusData.timeline_report,
-        warnings: statusData.warnings,
-        errors:   statusData.errors,
+        warnings: [...(statusData.warnings || []), ...(statusData.errors || [])],
+        errors:   [],
         visual_duration: statusData.visual_duration,
         audio_duration: statusData.audio_duration,
       })

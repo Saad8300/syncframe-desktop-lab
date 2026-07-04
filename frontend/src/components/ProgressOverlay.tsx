@@ -1,6 +1,7 @@
 // components/ProgressOverlay.tsx – Premium Generation Panel (minimalist)
 
 import React, { useEffect, useState, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { IconClock, IconXCircle, IconDownload, IconCheck, IconAlertTriangle, IconLoader } from './icons'
 import type { JobStatus, ExportResolution, RenderProfile } from '../types'
 import { getJobStatus, cancelJob, resolveBackendUrl } from '../utils/api'
@@ -244,7 +245,7 @@ export default function ProgressOverlay({
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  return (
+  return createPortal(
     <>
       <style>{`
         @keyframes rpo-fadeIn  { from { opacity: 0; } to { opacity: 1; } }
@@ -569,6 +570,7 @@ export default function ProgressOverlay({
           </div>
         )}
       </div>
-    </>
+    </>,
+    document.body
   )
 }

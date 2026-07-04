@@ -1927,7 +1927,7 @@ async def api_batch_job_video_timeline(
         await save_upload(audio_file, "audio_file")
         await save_upload(audio_zip, "audio_zip")
         await save_upload(videos_zip, "videos_zip")
-        await save_upload(timeline_csv, "timeline_csv")
+        await save_upload(timeline_csv, "timestamp_csv")
         await save_upload(intro_file, "intro_file")
         await save_upload(outro_file, "outro_file")
         await save_upload(background_music_file, "background_music_file")
@@ -1975,11 +1975,7 @@ async def api_batch_job_video_timeline(
             "credit_tool_name": credit_tool_name,
             "duration_seconds": duration_seconds,
         }
-        
-        if watermark_text:
-            config.update({
-            })
-        
+
         with open(job_dir / "config.json", "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2)
             
@@ -2082,7 +2078,7 @@ async def api_batch_job_media_timeline(
         await save_upload(audio_file, "audio_file")
         await save_upload(audio_zip, "audio_zip")
         await save_upload(media_zip, "media_zip")
-        await save_upload(timeline_csv, "timeline_csv")
+        await save_upload(timeline_csv, "timestamp_csv")
         await save_upload(intro_file, "intro_file")
         await save_upload(outro_file, "outro_file")
         await save_upload(background_music_file, "background_music_file")
@@ -2129,11 +2125,7 @@ async def api_batch_job_media_timeline(
             "credit_tool_name": credit_tool_name,
             "duration_seconds": duration_seconds,
         }
-        
-        if watermark_text:
-            config.update({
-            })
-        
+
         with open(job_dir / "config.json", "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2)
             

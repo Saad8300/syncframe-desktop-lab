@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Optional, Callable, Any
 
 import numpy as np
-from PIL import Image, ImageEnhance, ImageDraw, ImageFont
+from PIL import Image, ImageEnhance, ImageDraw, ImageFont, ImageFilter
 
 from moviepy.editor import (
     VideoFileClip,
@@ -38,7 +38,7 @@ from moviepy.video.fx.all import fadein, fadeout
 
 logger = logging.getLogger(__name__)
 
-from media_helpers import resolve_watermark_position
+from media_helpers import resolve_watermark_position, apply_motion_to_clip, pad_clip_to_size
 from text_overlay import make_text_overlay
 
 # ---------------------------------------------------------------------------
@@ -199,109 +199,42 @@ def parse_timeline_csv(
     csv_path: str,
     video_map: dict[str, str],
 ) -> tuple[bool, list[dict], float, list[str], list[str], str]:
-    """Parse start,end,video CSV. Returns (success, rows, total_dur, errors, warnings, norm_csv)."""
-    rows: list[dict] = []
-    warnings: list[str] = []
-    errors: list[str] = []
-
+    """Parse start,end,video CSV using shared parser."""
+    
     with open(csv_path, newline="", encoding="utf-8-sig") as f:
         content = f.read()
 
-    reader = csv.DictReader(io.StringIO(content))
-    if reader.fieldnames is None:
-        errors.append("CSV is empty or has no header row.")
-        return rows, warnings, errors
+    try:
+        from timeline_time_parser import parse_timeline_csv as shared_parse
+    except ImportError:
+        from backend.timeline_time_parser import parse_timeline_csv as shared_parse
+    success, parsed_rows, total_dur, errors, warnings, norm_csv = shared_parse(content, "video")
+    
+    if not success:
+        return False, [], 0.0, errors, warnings, ""
 
-    fieldnames_lower = [fn.strip().lower() for fn in reader.fieldnames]
-    missing = {"start", "end", "video"} - set(fieldnames_lower)
-    if missing:
-        errors.append(f"CSV is missing required column: {', '.join(sorted(missing))}")
-        return rows, warnings, errors
-
-    col_map = {fn.strip().lower(): fn for fn in reader.fieldnames}
-
-    for i, raw_row in enumerate(reader, start=2):
-        start_str = raw_row.get(col_map.get("start", "start"), "").strip()
-        end_str   = raw_row.get(col_map.get("end",   "end"),   "").strip()
-        video_str = raw_row.get(col_map.get("video", "video"), "").strip()
-
-        if not start_str and not end_str and not video_str:
-            continue
-
-        try:
-            from backend.timeline_time_parser import parse_time_to_seconds
-            sv_parsed = parse_time_to_seconds(start_str, allow_relative=False)
-            if sv_parsed is None:
-                errors.append(f"CSV row {i} has invalid start time: {start_str}")
-                continue
-            sv = float(sv_parsed)
-        except Exception:
-            errors.append(f"CSV row {i} has invalid start time: {start_str}")
-            continue
-            
-        try:
-            ev_parsed = parse_time_to_seconds(end_str, allow_relative=True)
-            if ev_parsed is None:
-                errors.append(f"CSV row {i} has invalid end time: {end_str}")
-                continue
-            ev = float(ev_parsed)
-        except Exception:
-            errors.append(f"CSV row {i} has invalid end time: {end_str}")
-            continue
-            
-        if ev <= sv:
-            errors.append(f"CSV row {i} end time must be greater than start time")
-            continue
-        if not video_str:
-            errors.append(f"CSV row {i} 'video' column is empty.")
-            continue
-
-        vpath = video_map.get(video_str.lower())
+    valid_rows = []
+    for i, r in enumerate(parsed_rows):
+        v = r["file"]
+        v_lower = v.lower()
+        
+        vpath = video_map.get(v_lower)
         if vpath is None:
-            errors.append(
-                f"CSV row {i} references \"{video_str}\", but it was not found in the videos ZIP"
-            )
+            errors.append(f"Row {i+2} references \"{v}\", but it was not found in the videos ZIP")
             continue
-
-        rows.append({"start": sv, "end": ev, "video": video_str, "video_path": vpath})
-
-    if not rows and not errors:
-        errors.append("CSV has no valid data rows.")
-        return False, rows, 0.0, errors, warnings, ""
+            
+        valid_rows.append({
+            "start": r["start"],
+            "end": r["end"],
+            "video": v,
+            "video_path": vpath,
+            "text": r["text"]
+        })
 
     if errors:
-        return False, rows, 0.0, errors, warnings, ""
-
-    rows.sort(key=lambda r: r["start"])
-
-    # Overlap check
-    for i in range(1, len(rows)):
-        if rows[i]["start"] < rows[i-1]["end"]:
-            # +2 because enumerate started at 2 and this is the i-th parsed row
-            errors.append(
-                f"CSV rows {i+1} and {i+2} overlap. Please fix timeline timings."
-            )
-
-    # Gap warnings
-    for i in range(1, len(rows)):
-        gap = rows[i]["start"] - rows[i-1]["end"]
-        if gap > 0.05:
-            warnings.append(
-                f"Gap of {gap:.2f}s between row {i+1} and row {i+2}. "
-                f"Black padding will be inserted."
-            )
-
-    # Format normalized_csv
-    out_csv_lines = ["start,end,video"]
-    for r in rows:
-        vid_name = r["video"]
-        if "," in vid_name or '"' in vid_name or "\n" in vid_name or "\r" in vid_name:
-            vid_name = f'"{vid_name.replace(chr(34), chr(34)+chr(34))}"'
-        out_csv_lines.append(f'{r["start"]},{r["end"]},{vid_name}')
+        return False, [], 0.0, errors, warnings, ""
         
-    normalized_csv = "\n".join(out_csv_lines)
-    total_dur = rows[-1]["end"] if rows else 0.0
-    return True, rows, total_dur, errors, warnings, normalized_csv
+    return True, valid_rows, total_dur, errors, warnings, norm_csv
 
 
 # ---------------------------------------------------------------------------
@@ -608,114 +541,7 @@ def _apply_transition_to_pair(
 # Watermark (reused from video_generator pattern)
 # ---------------------------------------------------------------------------
 
-def _make_watermark_overlay(
-    target_w: int, target_h: int, text: str,
-    position_mode: str = "preset", position: str = "bottom_right",
-    coordinate_mode: str = "design_canvas", aspect_ratio: str = "16:9",
-    x_pos: int = 50, y_pos: int = 50,
-    opacity: float = 0.65, size: int = 20, margin: int = 36,
-):
-    import platform
 
-    text = text.strip()
-    if not text:
-        return None
-
-    size_factor = max(0.01, size * 0.0011)
-    font_size   = max(14, int(target_h * size_factor))
-
-    candidates: list[str] = []
-    if platform.system() == "Darwin":
-        candidates = [
-            "/System/Library/Fonts/Helvetica.ttc",
-            "/System/Library/Fonts/HelveticaNeue.ttc",
-            "/Library/Fonts/Arial.ttf",
-        ]
-    else:
-        candidates = [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-        ]
-
-    font = None
-    for p in candidates:
-        try:
-            font = ImageFont.truetype(p, font_size)
-            break
-        except (IOError, OSError):
-            pass
-    if font is None:
-        font = ImageFont.load_default()
-
-    overlay = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-    try:
-        bbox = draw.textbbox((0, 0), text, font=font)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-        tx_off = -bbox[0]
-        ty_off = -bbox[1]
-    except AttributeError:
-        tw, th = draw.textsize(text, font=font)
-        tx_off = ty_off = 0
-
-    px = max(int(font_size * 0.55), 8)
-    py = max(int(font_size * 0.28), 4)
-    pw = tw + px * 2
-    ph = th + py * 2
-    margin = max(5, min(margin, min(target_w, target_h) // 4))
-
-    is_white_default = (position_mode == "preset" and position.lower().replace("-", "_") == "white_default")
-
-    if position_mode == "custom":
-        x, y = resolve_watermark_position(
-            x_pos, y_pos, coordinate_mode, aspect_ratio, target_w, target_h, "custom"
-        )
-    else:
-        pos = position.lower().replace("-", "_")
-        if pos == "white_default":
-            x = (target_w - tw) // 2
-            y = int(target_h * 0.85)
-        elif pos == "top_left":
-            x, y = margin, margin
-        elif pos == "top_right":
-            x, y = target_w - pw - margin, margin
-        elif pos == "bottom_left":
-            x, y = margin, target_h - ph - margin
-        elif pos == "center":
-            x, y = (target_w - pw) // 2, (target_h - ph) // 2
-        else:
-            x, y = target_w - pw - margin, target_h - ph - margin
-            
-    if position_mode != "preset":
-        pass
-        
-    bg_a  = int(opacity * 170)
-    txt_a = int(opacity * 255)
-    r = ph // 2
-    
-    if is_white_default:
-        shadow_offset = max(1, int(font_size * 0.06))
-        shadow_a = int(opacity * 220)
-        # Drop shadow for subtle readability
-        draw.text((x+tx_off+shadow_offset, y+ty_off+shadow_offset), text, font=font, fill=(0,0,0, shadow_a))
-        # Main white text
-        draw.text((x+tx_off, y+ty_off), text, font=font, fill=(255,255,255, txt_a))
-    else:
-        try:
-            draw.rounded_rectangle([x, y, x+pw, y+ph], radius=r, fill=(0,0,0, bg_a))
-        except AttributeError:
-            draw.rectangle([x, y, x+pw, y+ph], fill=(0,0,0, bg_a))
-        draw.text((x+px+tx_off, y+py+ty_off), text, font=font, fill=(255,255,255, txt_a))
-        
-    return np.array(overlay)
-
-
-def _apply_wm_frame(frame, overlay) -> object:
-    alpha = overlay[:, :, 3:4].astype(np.float32) / 255.0
-    rgb   = overlay[:, :, :3].astype(np.float32)
-    out   = frame.astype(np.float32) * (1.0 - alpha) + rgb * alpha
-    return np.clip(out, 0, 255).astype(np.uint8)
 
 
 # ---------------------------------------------------------------------------
@@ -760,16 +586,6 @@ def generate_video_timeline(
     transition_duration: float = 0.5,
     visual_effect:       str   = "none",
     effect_strength:     str   = "medium",
-    # Batch 10C — watermark
-    watermark_text:          str   = "",
-    watermark_position_mode: str   = "preset",
-    watermark_coordinate_mode: str = "design_canvas",
-    watermark_position:      str   = "bottom_right",
-    watermark_x:             int   = 50,
-    watermark_y:             int   = 50,
-    watermark_opacity:       float = 0.65,
-    watermark_size:          int   = 20,
-    watermark_margin:        int   = 36,
     # Batch 10C — intro / outro
     intro_path:          Optional[str] = None,
     outro_path:          Optional[str] = None,
@@ -865,7 +681,6 @@ def generate_video_timeline(
         profile  = PROFILE_SETTINGS.get(render_profile, PROFILE_SETTINGS["balanced"])
         fps      = profile["fps"]
         t_dur    = max(0.1, min(float(transition_duration), 2.0))
-        use_wm = (watermark_text != "")
         use_intro = intro_path is not None and os.path.isfile(intro_path)
         use_outro = outro_path is not None and os.path.isfile(outro_path)
 
@@ -884,8 +699,8 @@ def generate_video_timeline(
                 warnings_out.append("Blur Crossfade + long video (>10 min) can be computationally expensive. Use Fast Preview first.")
             if visual_effect != "none" and effect_strength == "high":
                 warnings_out.append("Visual Style High + long video (>10 min) may significantly increase render time.")
-            if use_intro or use_outro or use_wm:
-                warnings_out.append("Long Video Timeline exports with watermark/intro/outro can take several minutes. Use 720p Fast Preview first for testing.")
+            if use_intro or use_outro:
+                warnings_out.append("Long Video Timeline exports with intro/outro can take several minutes. Use 720p Fast Preview first for testing.")
 
         report(15, "Preparing clips")
         all_clips: list = []
@@ -1010,29 +825,6 @@ def generate_video_timeline(
 
         check_cancel()
         
-        # ── Step 7: Watermark ─────────────────────────────────────────────────
-        if use_wm:
-            report(58, "Applying watermark")
-            try:
-                wm_overlay = _make_watermark_overlay(
-                    target_w=target_w, target_h=target_h,
-                    text=watermark_text,
-                    position_mode=watermark_position_mode,
-                    position=watermark_position,
-                    coordinate_mode=watermark_coordinate_mode,
-                    aspect_ratio=aspect_ratio,
-                    x_pos=watermark_x,   y_pos=watermark_y,
-                    opacity=watermark_opacity,
-                    size=watermark_size, margin=watermark_margin,
-                )
-                if wm_overlay is not None:
-                    _ov = wm_overlay
-                    final_video = final_video.fl_image(lambda f: _apply_wm_frame(f, _ov))
-                else:
-                    warnings_out.append("Watermark could not be rendered; continuing without it.")
-            except Exception as we:
-                warnings_out.append(f"Watermark failed: {we}; continuing without it.")
-
 
         # ── Step 7.5: Text Overlay (Batch 16A) ────────────────────────────────
         if text_overlay_config and text_overlay_config.get("enabled"):
@@ -1191,6 +983,10 @@ def generate_video_timeline(
 
         report(100, "Finalizing export")
         logger.info("Video timeline complete: %s", output_path)
+
+        if errors_out:
+            warnings_out.extend(errors_out)
+            errors_out = []
 
         return {
             "success":   True,

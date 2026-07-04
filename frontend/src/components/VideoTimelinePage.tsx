@@ -216,8 +216,8 @@ function VideoDropZone({
 function VideoTimelineResult({
   result, rowCount, settings,
 }: { result: GenerateResponse; rowCount: number; settings: VideoTimelineSettings }) {
-  const videoUrl = resolveBackendUrl(result.output_video_url || "")
-  const hasVideo = result.success && videoUrl
+  const videoUrl = result.success && result.output_video_url ? `${resolveBackendUrl(result.output_video_url)}?t=${Date.now()}` : ""
+  const hasVideo = result.success && !!videoUrl
   const filename = result.output_filename ?? 'video_timeline.mp4'
 
   let chips = result.success ? [
@@ -353,7 +353,7 @@ function VideoTimelineResult({
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-export default function VideoTimelinePage() {
+export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: string) => void }) {
   const { requireAuth, user } = useAuth()
   const { plan } = usePlan()
   const { remaining } = useCredits()
@@ -656,8 +656,8 @@ export default function VideoTimelinePage() {
         output_video_url: jobStatus.output_video_url ?? undefined,
         output_filename: jobStatus.output_filename ?? undefined,
         timeline_report: jobStatus.timeline_report,
-        warnings: jobStatus.warnings,
-        errors:   jobStatus.errors,
+        warnings: [...jobStatus.warnings, ...jobStatus.errors],
+        errors:   [],
       })
       setStatus('done')
     } else {
@@ -1067,9 +1067,9 @@ export default function VideoTimelinePage() {
                   <div className="flex items-center gap-2 text-green-500 font-bold text-sm">
                     <IconCheck size={16} /> {successQueueMsg}
                   </div>
-                  <a href="/batch" className="text-xs font-semibold hover:underline" style={{ color: 'var(--text-primary)' }}>
+                  <button onClick={() => onNavigate && onNavigate('tool:batch_video')} className="text-xs font-semibold hover:underline" style={{ color: 'var(--text-primary)' }}>
                     Open Batch Queue →
-                  </a>
+                  </button>
                 </div>
               )}
 

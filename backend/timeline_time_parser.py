@@ -105,8 +105,8 @@ def parse_timeline_csv(csv_text: str, timeline_type: str) -> Tuple[bool, List[Di
         file_val = columns[file_col].strip() if file_col < len(columns) else ""
         text_val = columns[text_col].strip() if text_col != -1 and text_col < len(columns) else ""
         
-        if not file_val:
-            errors.append(f"Row {row_num}: File is missing.")
+        if not file_val and not text_val:
+            errors.append(f"Row {row_num}: Both File and Text are missing. At least one is required.")
             continue
             
         if not end_str:
@@ -153,6 +153,7 @@ def parse_timeline_csv(csv_text: str, timeline_type: str) -> Tuple[bool, List[Di
                 warnings.append(f"Row {row_num} starts after the previous row ends. This creates a gap.")
             
         parsed_rows.append({
+            "row_idx": row_num,
             "start": start_sec,
             "end": end_sec,
             "file": file_val,

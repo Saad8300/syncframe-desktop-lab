@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useAuth } from '../../auth/AuthProvider'
-import { IconX, IconBrandGoogle, IconAlertCircle } from '../icons'
+import { IconX, IconBrandGoogle, IconAlertCircle, IconEye, IconEyeOff } from '../icons'
 
 export function AuthModal() {
   const {
@@ -9,13 +9,15 @@ export function AuthModal() {
     signInWithGoogle,
     signInWithPassword,
     signUp,
+    resetPassword,
     isConfigured,
     authError
   } = useAuth()
 
-  const [mode, setMode] = useState<'login' | 'signup'>('login')
+  const [mode, setMode] = useState<'login' | 'signup' | 'forgot_password'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
@@ -39,7 +41,11 @@ export function AuthModal() {
     setSuccessMsg(null)
 
     try {
-      if (mode === 'login') {
+      if (mode === 'forgot_password') {
+        await resetPassword(email)
+        setSuccessMsg('Password reset link sent. Please check your email.')
+        setMode('login')
+      } else if (mode === 'login') {
         await signInWithPassword(email, password)
         // If successful, Provider sets authModalOpen(false)
       } else {
@@ -85,10 +91,10 @@ export function AuthModal() {
         {/* Header */}
         <div className="text-center space-y-2">
           <h2 className="text-2xl font-bold text-white tracking-tight">
-            {mode === 'login' ? 'Sign in to SyncFrame Studio' : 'Create your account'}
+            {mode === 'forgot_password' ? 'Reset Password' : mode === 'login' ? 'Sign in to SyncFrame Studio' : 'Create your account'}
           </h2>
           <p className="text-sm text-slate-400">
-            {mode === 'login' ? 'Welcome back! Please enter your details.' : 'Start creating automated faceless videos.'}
+            {mode === 'forgot_password' ? 'Enter your email to receive a reset link.' : mode === 'login' ? 'Welcome back! Please enter your details.' : 'Start creating automated faceless videos.'}
           </p>
         </div>
 
@@ -129,26 +135,58 @@ export function AuthModal() {
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-slate-300">Password</label>
-            <input 
-              type="password" 
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={!isConfigured || loading}
-              className="w-full px-4 py-2.5 bg-[#0f172a] border border-[#1e293b] rounded-lg text-white focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-colors disabled:opacity-50"
-              placeholder="••••••••"
-            />
-          </div>
+          {mode !== 'forgot_password' && (
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-slate-300">Password</label>
+              <div className="relative">
+                <input 
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={!isConfigured || loading}
+                  className="w-full px-4 py-2.5 bg-[#0f172a] border border-[#1e293b] rounded-lg text-white focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-colors disabled:opacity-50 pr-10"
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
+                >
+                  {showPassword ? <IconEyeOff size={18} /> : <IconEye size={18} />}
+                </button>
+              </div>
+              {mode === 'login' && (
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={() => { setMode('forgot_password'); setLocalError(null); setSuccessMsg(null); }}
+                    className="text-xs text-cyan-500 hover:text-cyan-400 hover:underline transition-colors"
+                  >
+                    Forgot Password?
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           <button 
             type="submit"
             disabled={!isConfigured || loading}
             className="w-full mt-2 py-2.5 px-4 bg-cyan-600 hover:bg-cyan-500 text-white font-semibold rounded-lg shadow-lg shadow-cyan-900/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? 'Processing...' : (mode === 'login' ? 'Sign In' : 'Sign Up')}
+            {loading ? 'Processing...' : mode === 'forgot_password' ? 'Send Reset Link' : mode === 'login' ? 'Sign In' : 'Sign Up'}
           </button>
+          
+          {mode === 'forgot_password' && (
+            <button
+              type="button"
+              onClick={() => { setMode('login'); setLocalError(null); setSuccessMsg(null); }}
+              className="w-full py-2 px-4 bg-[#1e293b] hover:bg-[#334155] text-slate-300 font-semibold rounded-lg transition-all"
+            >
+              Back to login
+            </button>
+          )}
         </form>
 
         {/* Divider */}
@@ -169,29 +207,25 @@ export function AuthModal() {
         </button>
 
         {/* Toggle Mode */}
-        <div className="text-center text-sm text-slate-400 mt-2">
-          {mode === 'login' ? (
-            <>
-              Don't have an account?{' '}
-              <button 
-                onClick={() => { setMode('signup'); setLocalError(null); setSuccessMsg(null); }}
-                className="text-cyan-400 hover:text-cyan-300 font-medium transition-colors"
-              >
-                Sign up
-              </button>
-            </>
-          ) : (
-            <>
-              Already have an account?{' '}
-              <button 
-                onClick={() => { setMode('login'); setLocalError(null); setSuccessMsg(null); }}
-                className="text-cyan-400 hover:text-cyan-300 font-medium transition-colors"
-              >
-                Sign in
-              </button>
-            </>
-          )}
-        </div>
+        {mode !== 'forgot_password' && (
+          <div className="text-center text-sm text-slate-400 mt-6">
+            {mode === 'login' ? (
+              <>
+                Don't have an account?{' '}
+                <button onClick={() => setMode('signup')} className="text-cyan-500 hover:text-cyan-400 font-medium hover:underline">
+                  Sign up
+                </button>
+              </>
+            ) : (
+              <>
+                Already have an account?{' '}
+                <button onClick={() => setMode('login')} className="text-cyan-500 hover:text-cyan-400 font-medium hover:underline">
+                  Sign in
+                </button>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Privacy Note */}
         <p className="text-xs text-center text-slate-500 mt-4 px-4">

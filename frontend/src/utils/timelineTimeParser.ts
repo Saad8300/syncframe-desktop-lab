@@ -175,8 +175,8 @@ export function parseTimelineCsv(csvText: string, timelineType: 'image' | 'media
     const file = (columns[fileCol] || "").trim();
     const text = textCol !== -1 ? (columns[textCol] || "").trim() : "";
 
-    if (!file) {
-      errors.push(`Row ${rowNum}: File is missing.`);
+    if (!file && !text) {
+      errors.push(`Row ${rowNum}: Both File and Text are missing. At least one is required.`);
       continue;
     }
 
