@@ -1,0 +1,122 @@
+{
+  "fonts": [
+    {
+      "id": "anton",
+      "displayName": "Anton",
+      "cssFamily": "Anton",
+      "assFamily": "Anton",
+      "category": "Viral/Bold",
+      "weights": [
+        { "weight": 400, "file": "Anton-Regular.ttf" }
+      ]
+    },
+    {
+      "id": "bebas_neue",
+      "displayName": "Bebas Neue",
+      "cssFamily": "Bebas Neue",
+      "assFamily": "Bebas Neue",
+      "category": "Viral/Bold",
+      "weights": [
+        { "weight": 400, "file": "BebasNeue-Regular.ttf" }
+      ]
+    },
+    {
+      "id": "bangers",
+      "displayName": "Bangers",
+      "cssFamily": "Bangers",
+      "assFamily": "Bangers",
+      "category": "Display",
+      "weights": [
+        { "weight": 400, "file": "Bangers-Regular.ttf" }
+      ]
+    },
+    {
+      "id": "montserrat",
+      "displayName": "Montserrat",
+      "cssFamily": "Montserrat",
+      "assFamily": "Montserrat",
+      "category": "Modern/Clean",
+      "weights": [
+        { "weight": 400, "file": "Montserrat-Regular.ttf" },
+        { "weight": 700, "file": "Montserrat-Bold.ttf" }
+      ]
+    },
+    {
+      "id": "roboto",
+      "displayName": "Roboto",
+      "cssFamily": "Roboto",
+      "assFamily": "Roboto",
+      "category": "Modern/Clean",
+      "weights": [
+        { "weight": 400, "file": "Roboto-Regular.ttf" },
+        { "weight": 700, "file": "Roboto-Bold.ttf" }
+      ]
+    },
+    {
+      "id": "lato",
+      "displayName": "Lato",
+      "cssFamily": "Lato",
+      "assFamily": "Lato",
+      "category": "Modern/Clean",
+      "weights": [
+        { "weight": 400, "file": "Lato-Regular.ttf" },
+        { "weight": 700, "file": "Lato-Bold.ttf" }
+      ]
+    },
+    {
+      "id": "inter",
+      "displayName": "Inter",
+      "cssFamily": "Inter",
+      "assFamily": "Inter",
+      "category": "Modern/Clean",
+      "weights": [
+        { "weight": 400, "file": "Inter-Regular.ttf" },
+        { "weight": 700, "file": "Inter-Bold.ttf" }
+      ]
+    },
+    {
+      "id": "playfair_display",
+      "displayName": "Playfair Display",
+      "cssFamily": "Playfair Display",
+      "assFamily": "Playfair Display",
+      "category": "Cinematic/Elegant",
+      "weights": [
+        { "weight": 400, "file": "PlayfairDisplay-Regular.ttf" },
+        { "weight": 700, "file": "PlayfairDisplay-Bold.ttf" }
+      ]
+    },
+    {
+      "id": "lora",
+      "displayName": "Lora",
+      "cssFamily": "Lora",
+      "assFamily": "Lora",
+      "category": "Cinematic/Elegant",
+      "weights": [
+        { "weight": 400, "file": "Lora-Regular.ttf" },
+        { "weight": 700, "file": "Lora-Bold.ttf" }
+      ]
+    },
+    {
+      "id": "oswald",
+      "displayName": "Oswald",
+      "cssFamily": "Oswald",
+      "assFamily": "Oswald",
+      "category": "Condensed",
+      "weights": [
+        { "weight": 400, "file": "Oswald-Regular.ttf" },
+        { "weight": 700, "file": "Oswald-Bold.ttf" }
+      ]
+    },
+    {
+      "id": "roboto_condensed",
+      "displayName": "Roboto Condensed",
+      "cssFamily": "Roboto Condensed",
+      "assFamily": "Roboto Condensed",
+      "category": "Condensed",
+      "weights": [
+        { "weight": 400, "file": "RobotoCondensed-Regular.ttf" },
+        { "weight": 700, "file": "RobotoCondensed-Bold.ttf" }
+      ]
+    }
+  ]
+}

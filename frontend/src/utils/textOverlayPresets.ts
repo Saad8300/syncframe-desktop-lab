@@ -72,9 +72,9 @@ export const BUILT_IN_PRESETS: TextOverlayPreset[] = [
       textOverlayMode: 'whole_video',
       textOverlayItems: [],
       textOverlayText: 'Your caption here',
-      textOverlayFontFamily: 'Impact',
+      textOverlayFontFamily: 'Anton',
       textOverlayFontSizePercent: 6,
-      textOverlayFontWeight: 'Extra Bold',
+      textOverlayFontWeight: 'Regular',
       textOverlayColor: '#FFFFFF',
       textOverlayOpacity: 100,
       textOverlayXPercent: 50,
@@ -156,7 +156,7 @@ export const BUILT_IN_PRESETS: TextOverlayPreset[] = [
       textOverlayMode: 'whole_video',
       textOverlayItems: [],
       textOverlayText: 'A cinematic quote',
-      textOverlayFontFamily: 'Georgia',
+      textOverlayFontFamily: 'Lora',
       textOverlayFontSizePercent: 5,
       textOverlayFontWeight: 'Medium',
       textOverlayColor: '#F8FAFC',
@@ -244,11 +244,34 @@ export function updatePreset(id: string, name: string): TextOverlayPreset[] {
   return updated
 }
 
+export function renamePreset(id: string, newName: string): TextOverlayPreset[] {
+  return updatePreset(id, newName);
+}
+
 export function deletePreset(id: string): TextOverlayPreset[] {
   const currentPresets = loadSavedPresets()
   const updated = currentPresets.filter(p => p.id !== id)
   localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
   return updated
+}
+
+export function duplicatePreset(id: string): TextOverlayPreset | null {
+  const allPresets = getAllPresets()
+  const existing = allPresets.find(p => p.id === id)
+  if (!existing) return null
+
+  const newPreset: TextOverlayPreset = {
+    id: crypto.randomUUID(),
+    name: `${existing.name} (Copy)`,
+    type: 'saved',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    settings: { ...existing.settings }
+  }
+  const currentSaved = loadSavedPresets()
+  const updated = [...currentSaved, newPreset]
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+  return newPreset
 }
 
 export function getAllPresets(): TextOverlayPreset[] {

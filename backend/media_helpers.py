@@ -271,15 +271,22 @@ def apply_ass_filters_with_ffmpeg(
     # Determine a safe working directory where the ASS files live
     cwd = None
 
+    fontsdir_path_dev = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "public", "fonts"))
+    fontsdir_path_prod = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "fonts"))
+    fontsdir_path = fontsdir_path_dev if os.path.exists(fontsdir_path_dev) else fontsdir_path_prod
+
+    # Escape path for FFmpeg filter (colon, backslash, single quote)
+    safe_fontsdir = fontsdir_path.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+
     if caption_ass_path and os.path.exists(caption_ass_path):
         cwd = str(Path(caption_ass_path).parent)
-        filters.append(f"ass={Path(caption_ass_path).name}")
+        filters.append(f"ass={Path(caption_ass_path).name}:fontsdir='{safe_fontsdir}'")
         
     if overlay_ass_path and os.path.exists(overlay_ass_path):
         # We assume if both exist, they are in the same temp dir
         if not cwd:
             cwd = str(Path(overlay_ass_path).parent)
-        filters.append(f"ass={Path(overlay_ass_path).name}")
+        filters.append(f"ass={Path(overlay_ass_path).name}:fontsdir='{safe_fontsdir}'")
 
     if not filters:
         # Just copy if no filters

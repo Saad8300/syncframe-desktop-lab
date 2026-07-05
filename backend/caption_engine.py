@@ -13,101 +13,102 @@ logger = logging.getLogger(__name__)
 # ─── Preset definitions (mirrors frontend CAPTION_PRESETS) ────────────────────
 BUILT_IN_DEFINITIONS = {
   "viral_bold": {
-    "fontFamily": "Arial", "fontWeight": "900", "fontScale": 1.0, "textTransform": "uppercase",
+    "fontFamily": "Roboto", "fontWeight": "900", "fontScale": 1.0, "textTransform": "uppercase",
     "letterSpacing": 0.02, "lineHeight": "tight", "textAlign": "center", "position": "lower_center",
     "verticalOffset": 0, "maxWidth": 85, "maxLines": 2, "maxWords": 5, "primaryColor": "#FFFFFF",
     "accentColor": "#FFE600", "accentMode": "second_line", "outlineStyle": "thick",
     "outlineColor": "#000000", "shadowStyle": "medium", "shadowColor": "#FFE600", "boxStyle": "none",
   },
   "impact_stack": {
-    "fontFamily": "Impact", "fontWeight": "900", "fontScale": 1.0, "textTransform": "uppercase",
+    "fontFamily": "Anton", "fontWeight": "400", "fontScale": 1.0, "textTransform": "uppercase",
     "letterSpacing": 0.04, "lineHeight": "tight", "textAlign": "center", "position": "bottom",
     "maxWidth": 90, "maxLines": 3, "maxWords": 4, "primaryColor": "#FFFFFF", "accentColor": "#A855F7",
     "accentMode": "alternate_phrase", "outlineStyle": "medium", "outlineColor": "#A855F7",
     "shadowStyle": "strong", "shadowColor": "#000000", "boxStyle": "none",
   },
   "highlight_bar": {
-    "fontFamily": "Arial", "fontWeight": "900", "fontScale": 1.0, "textTransform": "uppercase",
+    "fontFamily": "Inter", "fontWeight": "900", "fontScale": 1.0, "textTransform": "uppercase",
     "lineHeight": "tight", "textAlign": "center", "position": "lower_center", "maxWidth": 80,
     "maxLines": 2, "maxWords": 6, "primaryColor": "#000000", "accentColor": "#FF8A00",
     "accentMode": "none", "outlineStyle": "none", "shadowStyle": "none", "boxStyle": "medium",
     "boxColor": "#FF8A00",
   },
   "neon_pop": {
-    "fontFamily": "Arial", "fontWeight": "800", "fontScale": 1.0, "textTransform": "uppercase",
+    "fontFamily": "Montserrat", "fontWeight": "800", "fontScale": 1.0, "textTransform": "uppercase",
     "letterSpacing": 0.03, "lineHeight": "tight", "textAlign": "center", "position": "bottom",
     "maxWidth": 85, "maxLines": 2, "maxWords": 4, "primaryColor": "#FFFFFF", "accentColor": "#00E5FF",
     "accentMode": "none", "outlineStyle": "thin", "outlineColor": "#000000", "shadowStyle": "strong",
     "shadowColor": "#00E5FF", "boxStyle": "none",
   },
   "minimal": {
-    "fontFamily": "Helvetica", "fontWeight": "400", "fontScale": 0.8, "textTransform": "original",
+    "fontFamily": "Inter", "fontWeight": "400", "fontScale": 0.8, "textTransform": "original",
     "letterSpacing": 0.01, "lineHeight": "relaxed", "textAlign": "center", "position": "bottom",
     "maxWidth": 90, "maxLines": 2, "maxWords": 8, "primaryColor": "#FFFFFF", "accentColor": "#CCCCCC",
     "accentMode": "none", "outlineStyle": "none", "shadowStyle": "soft", "shadowColor": "#000000", "boxStyle": "none",
   },
   "hot_take": {
-    "fontFamily": "Arial", "fontWeight": "900", "fontScale": 1.2, "textTransform": "uppercase",
+    "fontFamily": "Bangers", "fontWeight": "400", "fontScale": 1.2, "textTransform": "uppercase",
     "letterSpacing": 0.02, "lineHeight": "tight", "textAlign": "center", "position": "center",
     "maxWidth": 95, "maxLines": 2, "maxWords": 3, "primaryColor": "#3333FF", "accentColor": "#FF6633",
     "accentMode": "none", "outlineStyle": "thick", "outlineColor": "#FF6633", "shadowStyle": "none", "boxStyle": "none",
   },
   "clean_subtitle": {
-    "fontFamily": "Helvetica", "fontWeight": "400", "fontScale": 0.9, "textTransform": "original",
+    "fontFamily": "Roboto", "fontWeight": "400", "fontScale": 0.9, "textTransform": "original",
     "letterSpacing": 0, "lineHeight": "normal", "textAlign": "center", "position": "bottom",
     "maxWidth": 85, "maxLines": 2, "maxWords": 10, "primaryColor": "#EAEAEA", "accentColor": "#FFFFFF",
     "accentMode": "none", "outlineStyle": "thin", "outlineColor": "#000000", "shadowStyle": "soft", "shadowColor": "#000000", "boxStyle": "none",
   },
   "documentary": {
-    "fontFamily": "Times New Roman", "fontWeight": "400", "fontScale": 0.85, "textTransform": "original",
+    "fontFamily": "Lora", "fontWeight": "400", "fontScale": 0.85, "textTransform": "original",
     "letterSpacing": 0.01, "lineHeight": "relaxed", "textAlign": "left", "position": "bottom",
     "maxWidth": 90, "maxLines": 2, "maxWords": 12, "primaryColor": "#F5F5F5", "accentColor": "#FFCC00",
     "accentMode": "none", "outlineStyle": "none", "shadowStyle": "medium", "shadowColor": "#000000", "boxStyle": "none",
   },
   "podcast_bold": {
-    "fontFamily": "Impact", "fontWeight": "900", "fontScale": 1.1, "textTransform": "uppercase",
+    "fontFamily": "Anton", "fontWeight": "400", "fontScale": 1.1, "textTransform": "uppercase",
     "letterSpacing": 0, "lineHeight": "tight", "textAlign": "center", "position": "center",
     "maxWidth": 80, "maxLines": 3, "maxWords": 3, "primaryColor": "#FFFFFF", "accentColor": "#00FF66",
     "accentMode": "first_word", "outlineStyle": "medium", "outlineColor": "#000000", "shadowStyle": "none", "boxStyle": "none",
   },
   "soft_box": {
-    "fontFamily": "Arial", "fontWeight": "600", "fontScale": 0.9, "textTransform": "original",
+    "fontFamily": "Lato", "fontWeight": "700", "fontScale": 0.9, "textTransform": "original",
     "letterSpacing": 0, "lineHeight": "normal", "textAlign": "center", "position": "lower_center",
     "maxWidth": 85, "maxLines": 2, "maxWords": 8, "primaryColor": "#FFFFFF", "accentColor": "#FF3399",
     "accentMode": "none", "outlineStyle": "none", "shadowStyle": "none", "boxStyle": "subtle", "boxColor": "#000000",
   },
   "punch_yellow": {
-    "fontFamily": "Arial Black", "fontWeight": "900", "fontScale": 1.1, "textTransform": "uppercase",
+    "fontFamily": "Inter", "fontWeight": "900", "fontScale": 1.1, "textTransform": "uppercase",
     "letterSpacing": 0.05, "lineHeight": "tight", "textAlign": "center", "position": "center",
     "maxWidth": 80, "maxLines": 2, "maxWords": 4, "primaryColor": "#FFE600", "accentColor": "#FFFFFF",
     "accentMode": "none", "outlineStyle": "thick", "outlineColor": "#000000", "shadowStyle": "strong", "shadowColor": "#000000", "boxStyle": "none",
   },
   "mono_tech": {
-    "fontFamily": "Courier New", "fontWeight": "800", "fontScale": 0.85, "textTransform": "uppercase",
+    "fontFamily": "Roboto Condensed", "fontWeight": "700", "fontScale": 0.85, "textTransform": "uppercase",
     "letterSpacing": 0.1, "lineHeight": "normal", "textAlign": "left", "position": "bottom",
     "maxWidth": 90, "maxLines": 3, "maxWords": 6, "primaryColor": "#00FF00", "accentColor": "#FFFFFF",
     "accentMode": "none", "outlineStyle": "none", "shadowStyle": "soft", "shadowColor": "#00FF00", "boxStyle": "subtle", "boxColor": "#002200",
   },
   "cinema_clean": {
-    "fontFamily": "Arial", "fontWeight": "400", "fontScale": 0.75, "textTransform": "original",
+    "fontFamily": "Playfair Display", "fontWeight": "400", "fontScale": 0.75, "textTransform": "original",
     "letterSpacing": 0.1, "lineHeight": "relaxed", "textAlign": "center", "position": "bottom",
     "maxWidth": 90, "maxLines": 2, "maxWords": 8, "primaryColor": "#FFFFFF", "accentColor": "#E0E0E0",
     "accentMode": "none", "outlineStyle": "none", "shadowStyle": "none", "boxStyle": "none",
   },
   "news_bar": {
-    "fontFamily": "Helvetica", "fontWeight": "800", "fontScale": 0.9, "textTransform": "uppercase",
+    "fontFamily": "Oswald", "fontWeight": "700", "fontScale": 0.9, "textTransform": "uppercase",
     "letterSpacing": 0, "lineHeight": "normal", "textAlign": "left", "position": "bottom",
     "maxWidth": 100, "maxLines": 1, "maxWords": 15, "primaryColor": "#FFFFFF", "accentColor": "#FF0000",
-    "accentMode": "none", "outlineStyle": "none", "shadowStyle": "none", "boxStyle": "strong", "boxColor": "#111111",
+    "accentMode": "none", "outlineStyle": "none", "shadowStyle": "soft", "shadowColor": "#000000", "boxStyle": "medium",
+    "boxColor": "#000000",
   },
   "electric_blue": {
-    "fontFamily": "Arial Black", "fontWeight": "900", "fontScale": 1.0, "textTransform": "uppercase",
+    "fontFamily": "Inter", "fontWeight": "900", "fontScale": 1.0, "textTransform": "uppercase",
     "letterSpacing": 0.03, "lineHeight": "tight", "textAlign": "center", "position": "center",
     "maxWidth": 80, "maxLines": 3, "maxWords": 5, "primaryColor": "#00FFFF", "accentColor": "#FFFFFF",
     "accentMode": "alternate_phrase", "outlineStyle": "medium", "outlineColor": "#0000FF", "shadowStyle": "glow", "shadowColor": "#00FFFF", "boxStyle": "none",
   },
   "red_alert": {
-    "fontFamily": "Impact", "fontWeight": "900", "fontScale": 1.25, "textTransform": "uppercase",
+    "fontFamily": "Anton", "fontWeight": "400", "fontScale": 1.25, "textTransform": "uppercase",
     "letterSpacing": 0.05, "lineHeight": "tight", "textAlign": "center", "position": "center",
     "maxWidth": 90, "maxLines": 2, "maxWords": 3, "primaryColor": "#FF0000", "accentColor": "#FFFFFF",
     "accentMode": "first_word", "outlineStyle": "thick", "outlineColor": "#000000", "shadowStyle": "strong", "shadowColor": "#FF0000", "boxStyle": "none",
@@ -115,7 +116,7 @@ BUILT_IN_DEFINITIONS = {
 }
 
 FALLBACK_DEFAULTS = {
-    "fontFamily": "Arial",
+    "fontFamily": "Roboto",
     "fontWeight": "bold",
     "fontScale": 1.0,
     "textTransform": "original",
@@ -610,11 +611,16 @@ def apply_captions_pipeline(
         # Path escaping for the ASS filter
         safe_ass_path = ass_path.name
         
+        fontsdir_path_dev = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "public", "fonts"))
+        fontsdir_path_prod = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "fonts"))
+        fontsdir_path = fontsdir_path_dev if os.path.exists(fontsdir_path_dev) else fontsdir_path_prod
+        safe_fontsdir = fontsdir_path.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+
         cmd = [
             ffmpeg_cmd,
             "-y",
             "-i", base_video_path,
-            "-vf", f"ass='{safe_ass_path}'",
+            "-vf", f"ass='{safe_ass_path}':fontsdir='{safe_fontsdir}'",
             "-c:a", "copy",
             "-c:v", "libx264",
             "-preset", "fast",
