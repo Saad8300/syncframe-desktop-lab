@@ -217,11 +217,11 @@ export default function ResultsPanel({ result, settings }: ResultsPanelProps) {
           overflow: 'hidden',
           boxShadow: 'var(--shadow-card)',
         }}>
-          {/* Video container */}
           <div style={{ background: '#000', aspectRatio: '16/9', position: 'relative' }}>
             <video
               src={videoUrl!}
               controls
+              playsInline
               style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
               aria-label="Generated video preview"
             />
