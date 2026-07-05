@@ -476,6 +476,9 @@ def generate_video(
     # Cancellation + progress
     cancel_event: Optional[threading.Event] = None,
     progress_callback: Optional[Callable[[int, str], None]] = None,
+    # Fast FFmpeg ASS rendering
+    caption_ass_path: Optional[str] = None,
+    overlay_ass_path: Optional[str] = None,
 ) -> dict[str, Any]:
     """
     Main entry-point for video generation.
@@ -856,76 +859,34 @@ def generate_video(
     _check_cancel()
 
     # ------------------------------------------------------------------
-    # 8. Text Overlay (Batch 16D)
+    # 8. Text Overlay (Now handled natively by FFmpeg ASS filter)
     # ------------------------------------------------------------------
     intro_clip = None
     outro_clip = None
+    
     if text_overlay_config and text_overlay_config.get("enabled"):
-        mode = text_overlay_config.get("mode", "whole_video")
-        _progress(78, f"Applying text overlay ({mode})")
-        
-        overlay_clips = []
-        def create_overlay_clip(txt, start, end):
-            overlay_arr = make_text_overlay(
+        _progress(78, f"Preparing text overlay ASS")
+        try:
+            from text_overlay import build_text_overlay_ass
+            ass_content = build_text_overlay_ass(
                 target_w=target_w, target_h=target_h,
-                text=txt,
-                font_family=text_overlay_config.get("font_family", "Inter"),
-                font_size_percent=text_overlay_config.get("font_size_percent", 5.0),
-                font_weight=text_overlay_config.get("font_weight", "Bold"),
-                color=text_overlay_config.get("color", "#FFFFFF"),
-                opacity=text_overlay_config.get("opacity", 100.0),
-                x_percent=text_overlay_config.get("x_percent", 50.0),
-                y_percent=text_overlay_config.get("y_percent", 90.0),
-                align=text_overlay_config.get("align", "center"),
-                max_width_percent=text_overlay_config.get("max_width_percent", 80.0),
-                shadow_enabled=text_overlay_config.get("shadow_enabled", True),
-                stroke_enabled=text_overlay_config.get("stroke_enabled", True),
-                stroke_color=text_overlay_config.get("stroke_color", "#000000"),
-                bg_enabled=text_overlay_config.get("background_enabled", False),
-                bg_color=text_overlay_config.get("background_color", "#000000"),
-                bg_opacity=text_overlay_config.get("background_opacity", 50.0)
+                duration=video.duration,
+                config=text_overlay_config,
+                rows=rows
             )
-            if overlay_arr is not None:
-                return ImageClip(overlay_arr).set_start(start).set_end(end)
-            return None
+            if ass_content:
+                import tempfile
+                import uuid
+                from pathlib import Path
+                temp_dir_p = Path(tempfile.gettempdir())
+                ass_path_obj = temp_dir_p / f"overlay_{uuid.uuid4().hex}.ass"
+                with open(ass_path_obj, "w", encoding="utf-8") as f:
+                    f.write(ass_content)
+                overlay_ass_path = str(ass_path_obj)
+        except Exception as e:
+            warnings.append(f"Text overlay preparation failed: {e}")
 
-        if mode == "whole_video":
-            c = create_overlay_clip(text_overlay_config.get("text", ""), 0, video.duration)
-            if c: overlay_clips.append(c)
-        elif mode == "timed_text":
-            from utils import parse_time
-            items = text_overlay_config.get("items", [])
-            for idx, itm in enumerate(items):
-                try:
-                    s_str = str(itm.get("start", "00:00"))
-                    e_str = str(itm.get("end", "00:05"))
-                    if s_str.isdigit() or (s_str.replace('.','',1).isdigit()):
-                        s = float(s_str)
-                    else:
-                        s = parse_time(s_str)
-                    if e_str.isdigit() or (e_str.replace('.','',1).isdigit()):
-                        e = float(e_str)
-                    else:
-                        e = parse_time(e_str)
-                    
-                    if e > s and itm.get("text"):
-                        c = create_overlay_clip(itm.get("text"), s, e)
-                        if c: overlay_clips.append(c)
-                except Exception as ex:
-                    warnings.append(f"Skipped invalid timed text item {idx+1}: {ex}")
-        elif mode == "csv_text":
-            for r in rows:
-                txt = r.get("text", "").strip()
-                if txt:
-                    c = create_overlay_clip(txt, r["start"], r["end"])
-                    if c: overlay_clips.append(c)
-
-        if overlay_clips:
-            saved_audio = video.audio
-            video = CompositeVideoClip([video.without_audio()] + overlay_clips, size=(target_w, target_h))
-            if saved_audio:
-                video = video.set_audio(saved_audio)
-        _check_cancel()
+    _check_cancel()
 
     # ------------------------------------------------------------------
     # 9. Append intro/outro videos (optional)
@@ -989,8 +950,11 @@ def generate_video(
             logger.info("Final clip has audio: true")
             logger.info(f"Final visual duration: {video.duration:.2f}s, Final audio duration: {video.audio.duration:.2f}s")
 
+        # Write pure video first
+        temp_output_f = os.path.join(temp_dir, "temp_output.mp4")
+        
         video.write_videofile(
-            output_path,
+            temp_output_f,
             fps=fps,
             codec="libx264",
             audio_codec="aac",
@@ -999,9 +963,25 @@ def generate_video(
             preset=preset,
             bitrate=video_bitrate,
             audio_bitrate=audio_bitrate,
+            threads=os.cpu_count() or 4,
             verbose=False,
             logger=None,
         )
+        
+        # Now apply ASS filters via the 2-pass FFmpeg helper
+        from media_helpers import apply_ass_filters_with_ffmpeg
+        apply_ass_filters_with_ffmpeg(
+            input_video_path=temp_output_f,
+            output_video_path=output_path,
+            caption_ass_path=caption_ass_path,
+            overlay_ass_path=overlay_ass_path,
+            preset=preset,
+            crf="22" # default crf for video_generator
+        )
+        
+        # Clean up temp
+        try: os.remove(temp_output_f)
+        except Exception: pass
     except Exception as e:
         logger.exception("Failed to write video file")
         errors.append(f"Failed to write video file: {e}")

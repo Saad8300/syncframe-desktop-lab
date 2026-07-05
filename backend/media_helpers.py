@@ -250,3 +250,70 @@ def apply_motion_to_clip(
         return cropped
 
     return padded_clip.fl(fl_motion)
+
+def apply_ass_filters_with_ffmpeg(
+    input_video_path: str,
+    output_video_path: str,
+    caption_ass_path: str = None,
+    overlay_ass_path: str = None,
+    preset: str = "fast",
+    crf: str = "22"
+):
+    import subprocess
+    import os
+    from pathlib import Path
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    # Collect filters
+    filters = []
+    # Determine a safe working directory where the ASS files live
+    cwd = None
+
+    if caption_ass_path and os.path.exists(caption_ass_path):
+        cwd = str(Path(caption_ass_path).parent)
+        filters.append(f"ass='{Path(caption_ass_path).name}'")
+        
+    if overlay_ass_path and os.path.exists(overlay_ass_path):
+        # We assume if both exist, they are in the same temp dir
+        if not cwd:
+            cwd = str(Path(overlay_ass_path).parent)
+        filters.append(f"ass='{Path(overlay_ass_path).name}'")
+
+    if not filters:
+        # Just copy if no filters
+        import shutil
+        shutil.copy2(input_video_path, output_video_path)
+        return
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", input_video_path,
+        "-vf", ",".join(filters),
+        "-c:v", "libx264",
+        "-c:a", "copy",
+        "-preset", preset,
+        "-crf", crf,
+        "-movflags", "+faststart",
+        output_video_path
+    ]
+
+    logger.info(f"Applying ASS filters with FFmpeg: {' '.join(cmd)}")
+    
+    try:
+        subprocess.run(
+            cmd,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            cwd=cwd,
+            timeout=1200
+        )
+    except subprocess.CalledProcessError as e:
+        err_msg = e.stderr.decode('utf-8', errors='ignore') if e.stderr else str(e)
+        logger.error(f"FFmpeg ASS filter application failed: {err_msg}")
+        raise RuntimeError("Failed to apply ASS captions via FFmpeg.")
+    except subprocess.TimeoutExpired:
+        logger.error("FFmpeg ASS filter timed out")
+        raise RuntimeError("Caption rendering timed out.")

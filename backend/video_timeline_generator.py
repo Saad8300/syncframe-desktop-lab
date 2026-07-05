@@ -38,7 +38,7 @@ from moviepy.video.fx.all import fadein, fadeout
 
 logger = logging.getLogger(__name__)
 
-from media_helpers import resolve_watermark_position, apply_motion_to_clip, pad_clip_to_size
+from media_helpers import resolve_watermark_position, apply_motion_to_clip, pad_clip_to_size, mix_background_music
 from text_overlay import make_text_overlay
 
 # ---------------------------------------------------------------------------
@@ -599,10 +599,13 @@ def generate_video_timeline(
     background_music_fade:   bool  = True,
     # Text overlay
     text_overlay_config:     Optional[dict] = None,
-    # Cancellation
-    cancel_event:        Optional[threading.Event]    = None,
-    progress_callback:   Optional[Callable[[int, str], None]] = None,
-) -> dict:
+    # Cancellation + progress
+    cancel_event: Optional[threading.Event] = None,
+    progress_callback: Optional[Callable[[int, str], None]] = None,
+    # Fast FFmpeg ASS rendering
+    caption_ass_path: Optional[str] = None,
+    overlay_ass_path: Optional[str] = None,
+) -> dict[str, Any]:
     """
     Full Video Timeline generation pipeline.
     Returns {success, warnings, errors, timeline, cancelled}.
@@ -826,37 +829,31 @@ def generate_video_timeline(
         check_cancel()
         
 
-        # ── Step 7.5: Text Overlay (Batch 16A) ────────────────────────────────
+        # ── Step 7. Text Overlay (Now handled natively by FFmpeg ASS filter)
+        # ------------------------------------------------------------------
         if text_overlay_config and text_overlay_config.get("enabled"):
-            report(60, "Applying text overlay")
-            overlay_arr = make_text_overlay(
-                target_w=target_w,
-                target_h=target_h,
-                text=text_overlay_config.get("text", ""),
-                font_family=text_overlay_config.get("font_family", "Inter"),
-                font_size_percent=text_overlay_config.get("font_size_percent", 5.0),
-                font_weight=text_overlay_config.get("font_weight", "Bold"),
-                color=text_overlay_config.get("color", "#FFFFFF"),
-                opacity=text_overlay_config.get("opacity", 100.0),
-                x_percent=text_overlay_config.get("x_percent", 50.0),
-                y_percent=text_overlay_config.get("y_percent", 90.0),
-                align=text_overlay_config.get("align", "center"),
-                max_width_percent=text_overlay_config.get("max_width_percent", 80.0),
-                shadow_enabled=text_overlay_config.get("shadow_enabled", True),
-                stroke_enabled=text_overlay_config.get("stroke_enabled", True),
-                stroke_color=text_overlay_config.get("stroke_color", "#000000"),
-                bg_enabled=text_overlay_config.get("background_enabled", False),
-                bg_color=text_overlay_config.get("background_color", "#000000"),
-                bg_opacity=text_overlay_config.get("background_opacity", 50.0)
-            )
-            if overlay_arr is not None:
-                overlay_clip = ImageClip(overlay_arr).set_duration(final_video.duration)
-                final_video = CompositeVideoClip([final_video, overlay_clip])
-            else:
-                warnings_out.append("Text overlay could not be rendered; continuing without it.")
-            check_cancel()
+            report(60, "Preparing text overlay ASS")
+            try:
+                from text_overlay import build_text_overlay_ass
+                ass_content = build_text_overlay_ass(
+                    target_w=target_w, target_h=target_h,
+                    duration=final_video.duration,
+                    config=text_overlay_config,
+                    rows=rows
+                )
+                if ass_content:
+                    import tempfile
+                    import uuid
+                    from pathlib import Path
+                    temp_dir_p = Path(tempfile.gettempdir())
+                    ass_path_obj = temp_dir_p / f"overlay_{uuid.uuid4().hex}.ass"
+                    with open(ass_path_obj, "w", encoding="utf-8") as f:
+                        f.write(ass_content)
+                    overlay_ass_path = str(ass_path_obj)
+            except Exception as e:
+                warnings_out.append(f"Text overlay preparation failed: {e}")
 
-        # ── Step 8: Intro / Outro ─────────────────────────────────────────────
+        check_cancel()
         clips_to_concat: list = []
         if use_intro:
             report(62, "Adding intro")
@@ -902,13 +899,21 @@ def generate_video_timeline(
                 )
             elif audio_dur > video_dur + 0.5:
                 pad_dur = audio_dur - video_dur
-                logger.info("Padding %.2fs black to match audio", pad_dur)
-                black_pad = _make_black_clip(target_w, target_h, pad_dur, fps)
-                final_video = concatenate_videoclips([final_video, black_pad], method="chain")
-                warnings_out.append(
-                    f"Visual timeline ({video_dur:.2f}s) shorter than audio ({audio_dur:.2f}s). "
-                    f"Black padding ({pad_dur:.2f}s) added at the end."
-                )
+                logger.info("Padding %.2fs with freeze frame to match audio", pad_dur)
+                try:
+                    last_frame = final_video.get_frame(video_dur - 0.001)
+                    from moviepy.editor import ImageClip
+                    freeze_clip = ImageClip(last_frame).set_duration(pad_dur).set_fps(fps)
+                    final_video = concatenate_videoclips([final_video, freeze_clip], method="chain")
+                    warnings_out.append(
+                        f"Visual timeline ({video_dur:.2f}s) shorter than audio ({audio_dur:.2f}s). "
+                        f"Last frame frozen for ({pad_dur:.2f}s) to match audio."
+                    )
+                except Exception as pad_e:
+                    logger.warning(f"Failed to freeze last frame, falling back to black: {pad_e}")
+                    black_pad = _make_black_clip(target_w, target_h, pad_dur, fps)
+                    final_video = concatenate_videoclips([final_video, black_pad], method="chain")
+                    warnings_out.append(f"Visual timeline shorter than audio. Black padding added.")
 
             final_audio = main_audio.subclip(0, min(main_audio.duration, final_video.duration))
             
@@ -938,7 +943,8 @@ def generate_video_timeline(
         # ── Step 10: Write output ─────────────────────────────────────────────
         codec         = "libx264"
         crf           = profile["crf"]
-        preset_name   = profile["preset"]
+        preset        = profile["preset"]
+        video_bitrate = profile.get("bitrate")
         audio_bitrate = profile["audio_bitrate"]
         temp_audio_f  = os.path.join(temp_dir, "temp_audio.mp4")
 
@@ -953,19 +959,40 @@ def generate_video_timeline(
             else:
                 logger.info("Final clip has audio: true")
                 logger.info(f"Final visual duration: {final_video.duration:.2f}s, Final audio duration: {final_video.audio.duration:.2f}s")
+            
+            # Write pure video first
+            temp_output_f = os.path.join(temp_dir, "temp_output.mp4")
+            
             final_video.write_videofile(
-                output_path,
+                temp_output_f,
                 fps=fps,
                 codec=codec,
                 audio_codec="aac",
                 audio_bitrate=audio_bitrate,
-                preset=preset_name,
-                ffmpeg_params=["-crf", str(crf)],
+                preset=preset,
+                bitrate=video_bitrate,
+                threads=os.cpu_count() or 4,
                 temp_audiofile=temp_audio_f,
                 remove_temp=True,
                 logger=None,
                 verbose=False,
             )
+            
+            # Now apply ASS filters via the 2-pass FFmpeg helper
+            from media_helpers import apply_ass_filters_with_ffmpeg
+            apply_ass_filters_with_ffmpeg(
+                input_video_path=temp_output_f,
+                output_video_path=output_path,
+                caption_ass_path=caption_ass_path,
+                overlay_ass_path=overlay_ass_path,
+                preset=preset,
+                crf=str(crf)
+            )
+            
+            # Clean up temp
+            try: os.remove(temp_output_f)
+            except Exception: pass
+
         except Exception as e:
             return {
                 "success": False, "warnings": warnings_out,

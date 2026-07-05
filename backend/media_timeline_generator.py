@@ -401,9 +401,11 @@ def generate_media_timeline(
     background_music_fade: bool = True,
     intro_path: Optional[str] = None,
     outro_path: Optional[str] = None,
-    cancel_event: threading.Event = None,
-    progress_callback: Callable[[int, str], None] = None,
-) -> dict:
+    cancel_event: Optional[threading.Event] = None,
+    progress_callback: Optional[Callable[[int, str], None]] = None,
+    caption_ass_path: Optional[str] = None,
+    overlay_ass_path: Optional[str] = None,
+) -> dict[str, Any]:
     
     def report(pct, msg):
         logger.info(f"MediaTimeline: {msg} ({pct}%)")
@@ -481,8 +483,18 @@ def generate_media_timeline(
                             if fill_mode == "loop":
                                 base_clip = loop(raw, duration=dur)
                             elif fill_mode == "freeze":
-                                freeze = raw.to_ImageClip(t=v_dur - 0.1).set_duration(dur - v_dur)
-                                base_clip = concatenate_videoclips([raw, freeze], method="chain")
+                                if dur > v_dur + 0.05:
+                                    try:
+                                        last_frame = raw.get_frame(v_dur - 0.001)
+                                        from moviepy.editor import ImageClip
+                                        padding = ImageClip(last_frame).set_duration(dur - v_dur).set_fps(fps)
+                                        base_clip = concatenate_videoclips([raw, padding], method="chain")
+                                    except Exception as pad_e:
+                                        logger.warning(f"Failed to freeze last frame, falling back to black: {pad_e}")
+                                        padding = _make_black_clip(raw.w, raw.h, dur - v_dur, fps)
+                                        base_clip = concatenate_videoclips([raw, padding], method="chain")
+                                else:
+                                    base_clip = raw.subclip(0, dur)
                             else: # trim_only -> leaves black
                                 padding = _make_black_clip(raw.w, raw.h, dur - v_dur, fps)
                                 base_clip = concatenate_videoclips([raw, padding], method="chain")
@@ -664,42 +676,33 @@ def generate_media_timeline(
 
         main_video = main_video.set_audio(final_audio)
 
-        # ── Step 7.5: Text Overlay (Batch 16A) ────────────────────────────────
+        # ------------------------------------------------------------------
+        # 7. Text Overlay (Now handled natively by FFmpeg ASS filter)
+        # ------------------------------------------------------------------
         text_overlay_config = text_overlay_config or {}
-        overlay_enabled = bool(text_overlay_config.get("enabled", False))
-        overlay_text = str(text_overlay_config.get("text") or text_overlay_config.get("overlay_text") or text_overlay_config.get("text_overlay_text") or "")
+        if text_overlay_config and text_overlay_config.get("enabled"):
+            report(72, "Preparing text overlay ASS")
+            try:
+                from text_overlay import build_text_overlay_ass
+                ass_content = build_text_overlay_ass(
+                    target_w=width, target_h=height,
+                    duration=visual_dur,
+                    config=text_overlay_config,
+                    rows=[]
+                )
+                if ass_content:
+                    import tempfile
+                    import uuid
+                    from pathlib import Path
+                    temp_dir_p = Path(tempfile.gettempdir())
+                    ass_path_obj = temp_dir_p / f"overlay_{uuid.uuid4().hex}.ass"
+                    with open(ass_path_obj, "w", encoding="utf-8") as f:
+                        f.write(ass_content)
+                    overlay_ass_path = str(ass_path_obj)
+            except Exception as e:
+                warnings.append(f"Text overlay preparation failed: {e}")
 
-        if overlay_enabled and overlay_text.strip():
-            report(72, "Applying text overlay")
-            overlay_arr = make_text_overlay(
-                target_w=width,
-                target_h=height,
-                text=overlay_text,
-                font_family=text_overlay_config.get("font_family", "Inter"),
-                font_size_percent=text_overlay_config.get("font_size_percent", 5.0),
-                font_weight=text_overlay_config.get("font_weight", "Bold"),
-                color=text_overlay_config.get("color", "#FFFFFF"),
-                opacity=text_overlay_config.get("opacity", 100.0),
-                x_percent=text_overlay_config.get("x_percent", 50.0),
-                y_percent=text_overlay_config.get("y_percent", 90.0),
-                align=text_overlay_config.get("align", "center"),
-                max_width_percent=text_overlay_config.get("max_width_percent", 80.0),
-                shadow_enabled=text_overlay_config.get("shadow_enabled", True),
-                stroke_enabled=text_overlay_config.get("stroke_enabled", True),
-                stroke_color=text_overlay_config.get("stroke_color", "#000000"),
-                bg_enabled=text_overlay_config.get("background_enabled", False),
-                bg_color=text_overlay_config.get("background_color", "#000000"),
-                bg_opacity=text_overlay_config.get("background_opacity", 50.0)
-            )
-            if overlay_arr is not None:
-                overlay_clip = ImageClip(overlay_arr).set_duration(visual_dur)
-                saved_audio = main_video.audio
-                main_video = CompositeVideoClip([main_video.without_audio(), overlay_clip], size=(width, height))
-                if saved_audio:
-                    main_video = main_video.set_audio(saved_audio)
-            else:
-                warnings.append("Text overlay could not be rendered; continuing without it.")
-            check_cancel()
+        check_cancel()
 
         # Intro / Outro
         use_intro = intro_path is not None and os.path.isfile(intro_path)
@@ -733,8 +736,6 @@ def generate_media_timeline(
 
         report(85, "Encoding final MP4...")
         
-        logger_func = "bar" if not progress_callback else None
-        
         if main_video.audio is None:
             logger.error("CRITICAL: Final video clip has no audio track attached before export.")
             return {
@@ -750,19 +751,36 @@ def generate_media_timeline(
             
         temp_audio_f = os.path.join(temp_dir, "temp_audio.mp4")
         
+        # Write pure video first
+        temp_output_f = os.path.join(temp_dir, "temp_output.mp4")
+        
         main_video.write_videofile(
-            output_path,
+            temp_output_f,
             fps=fps,
             codec="libx264",
             preset=prof["preset"],
-            ffmpeg_params=["-crf", str(prof["crf"]), "-pix_fmt", "yuv420p"],
             audio_codec="aac",
             temp_audiofile=temp_audio_f,
             remove_temp=True,
             audio_bitrate=prof["audio_bitrate"],
             threads=max(1, os.cpu_count() - 1),
-            logger=logger_func
+            logger=None
         )
+        
+        # Now apply ASS filters via the 2-pass FFmpeg helper
+        from media_helpers import apply_ass_filters_with_ffmpeg
+        apply_ass_filters_with_ffmpeg(
+            input_video_path=temp_output_f,
+            output_video_path=output_path,
+            caption_ass_path=caption_ass_path,
+            overlay_ass_path=overlay_ass_path,
+            preset=prof["preset"],
+            crf=str(prof["crf"])
+        )
+        
+        # Clean up temp
+        try: os.remove(temp_output_f)
+        except Exception: pass
         
         report(100, "Done.")
         
