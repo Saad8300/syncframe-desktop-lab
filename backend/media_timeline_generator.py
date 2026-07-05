@@ -486,7 +486,6 @@ def generate_media_timeline(
                                 if dur > v_dur + 0.05:
                                     try:
                                         last_frame = raw.get_frame(v_dur - 0.001)
-                                        from moviepy.editor import ImageClip
                                         padding = ImageClip(last_frame).set_duration(dur - v_dur).set_fps(fps)
                                         base_clip = concatenate_videoclips([raw, padding], method="chain")
                                     except Exception as pad_e:
@@ -508,6 +507,9 @@ def generate_media_timeline(
                 try:
                     base_clip = ImageClip(asset_path).set_duration(dur)
                 except Exception as e:
+                    print(f"IMAGE ERROR: {e}")
+                    import traceback
+                    traceback.print_exc()
                     errors.append(f"Image asset \"{Path(asset_path).name}\" could not be processed.")
                     base_clip = _make_black_clip(width, height, dur, fps)
             else: # none / text only
@@ -693,7 +695,6 @@ def generate_media_timeline(
                 if ass_content:
                     import tempfile
                     import uuid
-                    from pathlib import Path
                     temp_dir_p = Path(tempfile.gettempdir())
                     ass_path_obj = temp_dir_p / f"overlay_{uuid.uuid4().hex}.ass"
                     with open(ass_path_obj, "w", encoding="utf-8") as f:
