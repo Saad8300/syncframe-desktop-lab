@@ -93,6 +93,42 @@ export async function checkHealth(): Promise<boolean> {
  * Returns immediately with a job_id; poll getJobStatus() for updates.
  */
 
+export function appendCaptionSettings(form: FormData, settings: any) {
+  const cc = settings.captionConfig;
+  if (!cc) {
+    form.append('caption_source', 'none');
+    return;
+  }
+  form.append('caption_source', cc.source || 'none');
+  
+  const overrides: any = cc.overrides ? { ...cc.overrides } : {};
+  if (cc.presetId && cc.presetId.startsWith('custom_')) {
+    try {
+      const stored = localStorage.getItem('syncframe_custom_caption_presets');
+      if (stored) {
+        const presets = JSON.parse(stored);
+        const preset = presets.find((p: any) => p.id === cc.presetId);
+        if (preset) {
+          overrides.snapshot_full_overrides = preset;
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to attach custom preset snapshot", err);
+    }
+  }
+
+  // Serialize the entire config object so the backend can decode it
+  form.append('caption_config_json', JSON.stringify({
+    presetId: cc.presetId,
+    overrides: overrides
+  }));
+  
+  if (cc.srtFile) {
+    form.append('srt_file', cc.srtFile);
+  }
+}
+
+
 function appendTextOverlaySettings(form: FormData, settings: any) {
   form.append('text_overlay_enabled', settings.textOverlayEnabled ? 'true' : 'false')
   form.append('text_overlay_mode', settings.textOverlayMode || 'whole_video')
@@ -165,6 +201,7 @@ export async function startJob(
   form.append('music_fade',      settings.musicFade ? 'true' : 'false')
 
   appendTextOverlaySettings(form, settings)
+  appendCaptionSettings(form, settings)
 
   // Optional file uploads
   if (introFile)   form.append('intro_file',    introFile)
@@ -247,6 +284,7 @@ export async function createImageTimelineBatchJob(
   if (bgMusicFile) form.append('bg_music_file', bgMusicFile)
 
   appendTextOverlaySettings(form, settings)
+  appendCaptionSettings(form, settings)
 
   const res = await fetch(apiUrl('/api/batch/jobs/image-timeline'), {
     method: 'POST',
@@ -323,6 +361,7 @@ export async function createVideoTimelineBatchJob(
   form.append('background_music_fade',   String(settings.backgroundMusicFade))
 
   appendTextOverlaySettings(form, settings)
+  appendCaptionSettings(form, settings)
 
   const res = await fetch(apiUrl('/api/batch/jobs/video-timeline'), {
     method: 'POST',
@@ -426,6 +465,7 @@ export async function createMediaTimelineBatchJob(
   if (outroFile) form.append('outro_file', outroFile)
 
   appendTextOverlaySettings(form, settings)
+  appendCaptionSettings(form, settings)
 
   const res = await fetch(apiUrl('/api/batch/jobs/media-timeline'), {
     method: 'POST',
@@ -530,6 +570,7 @@ export async function startVideoTimelineJob(
   form.append('background_music_fade',   String(settings.backgroundMusicFade))
 
   appendTextOverlaySettings(form, settings)
+  appendCaptionSettings(form, settings)
 
   const res = await fetch(apiUrl('/api/jobs/start-video-timeline'), {
     method: 'POST',
@@ -673,6 +714,7 @@ export async function startMediaTimelineJob(
   if (outroFile) form.append('outro_file', outroFile)
 
   appendTextOverlaySettings(form, settings)
+  appendCaptionSettings(form, settings)
 
   const res = await fetch(apiUrl('/api/jobs/start-media-timeline'), {
     method: 'POST',
