@@ -72,6 +72,7 @@ from media_timeline_generator import generate_media_timeline, MediaTimelineCance
 from utils import seconds_to_mmss, FORMAT_DIMENSIONS
 from audio_helpers import prepare_single_audio, prepare_zip_audio, merge_audio_parts_in_order
 from transcription_helpers import transcribe_audio_backend, format_output
+import caption_engine
 import history_store
 import batch_queue_store
 import batch_queue_runner
@@ -137,6 +138,11 @@ VALID_WM_POSITIONS      = {"top_left", "top_right", "bottom_left", "bottom_right
 VALID_WM_SIZES          = {"small", "medium", "large"}
 VALID_FILL_MODES        = {"loop", "trim_only", "freeze"}
 ALLOWED_VIDEO_EXTS      = {".mp4", ".mov", ".webm"}
+
+# ---------------------------------------------------------------------------
+# Global Render Lock
+# ---------------------------------------------------------------------------
+from render_lock import get_render_lock_status, acquire_render_lock, release_render_lock
 
 # ---------------------------------------------------------------------------
 # In-memory job registry
@@ -210,6 +216,7 @@ def startup_event():
             "status": "failed",
             "message": "Interrupted by backend restart."
         })
+    release_render_lock(force=True)
 
 app.mount("/outputs", StaticFiles(directory=str(OUTPUTS_DIR)), name="outputs")
 
@@ -221,6 +228,15 @@ app.mount("/outputs", StaticFiles(directory=str(OUTPUTS_DIR)), name="outputs")
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok", "service": "Audio Image Sync Studio", "version": "1.3.0"}
+
+@app.get("/api/render-lock/status")
+async def render_lock_status():
+    return get_render_lock_status()
+
+@app.post("/api/render-lock/release")
+async def force_release_render_lock():
+    release_render_lock(force=True)
+    return {"status": "ok", "message": "Render lock forcefully released."}
 
 
 # ---------------------------------------------------------------------------
@@ -281,6 +297,24 @@ async def jobs_start(
     text_overlay_background_opacity: float = Form(50.0),
     text_overlay_mode: str = Form("whole_video"),
     text_overlay_items: str = Form("[]"),
+    # Captions
+    caption_source: str = Form("none"),
+    caption_config_json: str = Form("{}"),
+    caption_preset: str = Form("viral_bold"),
+    caption_layout: str = Form("auto"),
+    caption_font_scale: float = Form(1.0),
+    caption_max_words: int = Form(5),
+    caption_max_lines: int = Form(2),
+    caption_max_width: int = Form(85),
+    caption_vertical_offset: int = Form(0),
+    caption_line_spacing: str = Form("normal"),
+    caption_style: str = Form(""),
+    caption_position: str = Form("lower_center"),
+    caption_size: str = Form("large"),
+    caption_appearance: str = Form("outline"),
+    caption_primary_color: str = Form("#FFFFFF"),
+    caption_highlight_color: str = Form("#FFE600"),
+    srt_file: Optional[UploadFile] = File(None),
     credit_cost: Optional[int] = Form(None),
 ):
     """
@@ -382,8 +416,18 @@ async def jobs_start(
 
     # ── Set up job ────────────────────────────────────────────────────────────
     job_id   = uuid.uuid4().hex
+    if not acquire_render_lock("direct", "image_timeline", job_id):
+        raise HTTPException(409, "Another video is currently rendering. Only one video can be generated at a time.")
     job_temp = TEMP_DIR / job_id
     job_temp.mkdir(parents=True, exist_ok=True)
+    # Save optional SRT file
+    srt_save_path: Optional[str] = None
+    if srt_file is not None and srt_file.filename:
+        srt_save_path = str(job_temp / f"captions_{uuid.uuid4().hex}.srt")
+        content_srt = await srt_file.read()
+        with open(srt_save_path, "wb") as f_srt:
+            f_srt.write(content_srt)
+
 
     # Save required uploads
     zip_path    = str(job_temp / "images.zip")
@@ -474,6 +518,39 @@ async def jobs_start(
                     state["current_step"] = step
 
         try:
+            # --- PREPARE CAPTIONS ASS ---
+            from utils import get_resolution
+            target_w, target_h = get_resolution(aspect_ratio, export_resolution)
+
+            caption_ass_path = None
+            if caption_source != "none":
+                from caption_engine import prepare_captions_ass
+                import json
+                try:
+                    caption_config = json.loads(caption_config_json)
+                except:
+                    caption_config = {}
+                caption_config["caption_source"] = caption_source
+                
+                def caption_prog(msg, pct):
+                    progress_callback(5 + int(pct * 0.1), f"Captions: {msg}")
+                try:
+                    caption_ass_path = prepare_captions_ass(
+                        main_audio_path=audio_path,
+                        config=caption_config,
+                        width=target_w,
+                        height=target_h,
+                        progress_callback=caption_prog
+                    )
+                except Exception as e:
+                    logger.error(f"Captions failed: {e}")
+                    with _jobs_lock:
+                        state["warnings"].append(str(e))
+
+            from utils import Profiler
+            profiler = Profiler()
+            profiler.start_stage("MoviePy Generate")
+
             result = generate_video(
                 audio_path=audio_path,
                 zip_path=zip_path,
@@ -505,31 +582,42 @@ async def jobs_start(
                 # Infra
                 cancel_event=state["cancel_event"],
                 progress_callback=progress_callback,
+                caption_ass_path=caption_ass_path,
             )
 
+            profiler.end_stage()
             timeline_report = _format_timeline(result.get("timeline", []))
 
             with _jobs_lock:
                 state["warnings"]       = result.get("warnings", [])
                 state["errors"]         = result.get("errors", [])
                 state["timeline_report"] = timeline_report
+                state["profiler_report"] = profiler.get_report()
                 state["finished_at"]    = time.time()
+                is_cancelled = result.get("cancelled")
+                is_success = result.get("success", False)
 
-                if result.get("cancelled"):
+            if is_cancelled:
+                with _jobs_lock:
                     state["status"]       = "cancelled"
                     state["current_step"] = "Cancelled"
                     state["progress"]     = 0
-                elif result["success"] and os.path.isfile(output_path):
+            else:
+                if is_success and os.path.isfile(output_path):
+                    
+                    
                     if not _verify_mp4_audio(output_path):
-                        state["status"]       = "failed"
-                        state["current_step"] = "Failed"
-                        state["errors"].append("Final video was created without an audio track. Please check the audio pipeline.")
+                        with _jobs_lock:
+                            state["status"]       = "failed"
+                            state["current_step"] = "Failed"
+                            state["errors"].append("Final video was created without an audio track. Please check the audio pipeline.")
                         logger.error(f"Job failed audio verification: {output_path}")
                     else:
-                        state["status"]            = "completed"
-                        state["current_step"]      = "Complete"
-                        state["progress"]          = 100
-                        state["output_video_url"]  = f"/outputs/{output_filename}"
+                        with _jobs_lock:
+                            state["status"]            = "completed"
+                            state["current_step"]      = "Complete"
+                            state["progress"]          = 100
+                            state["output_video_url"]  = f"/outputs/{output_filename}"
                         logger.info(f"Final MP4 audio stream verified: true")
                         try:
                             history_store.add_history(
@@ -577,6 +665,7 @@ async def jobs_start(
                 state["finished_at"]  = time.time()
 
         finally:
+            release_render_lock(job_id)
             try:
                 safe_rmtree(str(job_temp), ignore_errors=True)
             except Exception:
@@ -870,6 +959,24 @@ async def jobs_start_video_timeline(
     text_overlay_background_opacity: float = Form(50.0),
     text_overlay_mode: str = Form("whole_video"),
     text_overlay_items: str = Form("[]"),
+    # Captions
+    caption_source: str = Form("none"),
+    caption_config_json: str = Form("{}"),
+    caption_preset: str = Form("viral_bold"),
+    caption_layout: str = Form("auto"),
+    caption_font_scale: float = Form(1.0),
+    caption_max_words: int = Form(5),
+    caption_max_lines: int = Form(2),
+    caption_max_width: int = Form(85),
+    caption_vertical_offset: int = Form(0),
+    caption_line_spacing: str = Form("normal"),
+    caption_style: str = Form(""),
+    caption_position: str = Form("lower_center"),
+    caption_size: str = Form("large"),
+    caption_appearance: str = Form("outline"),
+    caption_primary_color: str = Form("#FFFFFF"),
+    caption_highlight_color: str = Form("#FFE600"),
+    srt_file: Optional[UploadFile] = File(None),
     credit_cost: Optional[int] = Form(None),
 ):
     """
@@ -917,8 +1024,18 @@ async def jobs_start_video_timeline(
 
     # Set up job temp dir
     job_id   = uuid.uuid4().hex
+    if not acquire_render_lock("direct", "video_timeline", job_id):
+        raise HTTPException(409, "Another video is currently rendering. Only one video can be generated at a time.")
     job_temp = TEMP_DIR / job_id
     job_temp.mkdir(parents=True, exist_ok=True)
+    # Save optional SRT file
+    srt_save_path: Optional[str] = None
+    if srt_file is not None and srt_file.filename:
+        srt_save_path = str(job_temp / f"captions_{uuid.uuid4().hex}.srt")
+        content_srt = await srt_file.read()
+        with open(srt_save_path, "wb") as f_srt:
+            f_srt.write(content_srt)
+
 
     # Save required uploads
     zip_path   = str(job_temp / "videos.zip")
@@ -1023,6 +1140,39 @@ async def jobs_start_video_timeline(
                     state["current_step"] = step
 
         try:
+            # --- PREPARE CAPTIONS ASS ---
+            from utils import get_resolution
+            target_w, target_h = get_resolution(aspect_ratio, export_resolution)
+
+            caption_ass_path = None
+            if caption_source != "none":
+                from caption_engine import prepare_captions_ass
+                import json
+                try:
+                    caption_config = json.loads(caption_config_json)
+                except:
+                    caption_config = {}
+                caption_config["caption_source"] = caption_source
+                
+                def caption_prog(msg, pct):
+                    progress_callback(5 + int(pct * 0.1), f"Captions: {msg}")
+                try:
+                    caption_ass_path = prepare_captions_ass(
+                        main_audio_path=audio_path,
+                        config=caption_config,
+                        width=target_w,
+                        height=target_h,
+                        progress_callback=caption_prog
+                    )
+                except Exception as e:
+                    logger.error(f"Captions failed: {e}")
+                    with _jobs_lock:
+                        state["warnings"].append(str(e))
+
+            from utils import Profiler
+            profiler = Profiler()
+            profiler.start_stage("MoviePy Generate")
+
             result = generate_video_timeline(
                 audio_path=audio_path,
                 zip_path=zip_path,
@@ -1049,31 +1199,42 @@ async def jobs_start_video_timeline(
                 outro_path=outro_path,
                 cancel_event=state["cancel_event"],
                 progress_callback=progress_callback,
+                caption_ass_path=caption_ass_path,
             )
 
+            profiler.end_stage()
             timeline_report = _format_timeline(result.get("timeline", []))
 
             with _jobs_lock:
                 state["warnings"]        = result.get("warnings", [])
                 state["errors"]          = result.get("errors", [])
                 state["timeline_report"] = timeline_report
+                state["profiler_report"] = profiler.get_report()
                 state["finished_at"]     = time.time()
+                is_cancelled = result.get("cancelled")
+                is_success = result.get("success", False)
 
-                if result.get("cancelled"):
+            if is_cancelled:
+                with _jobs_lock:
                     state["status"]       = "cancelled"
                     state["current_step"] = "Cancelled"
                     state["progress"]     = 0
-                elif result["success"] and os.path.isfile(output_path):
+            else:
+                if is_success and os.path.isfile(output_path):
+                    
+                    
                     if not _verify_mp4_audio(output_path):
-                        state["status"]       = "failed"
-                        state["current_step"] = "Failed"
-                        state["errors"].append("Final video was created without an audio track. Please check the audio pipeline.")
+                        with _jobs_lock:
+                            state["status"]       = "failed"
+                            state["current_step"] = "Failed"
+                            state["errors"].append("Final video was created without an audio track. Please check the audio pipeline.")
                         logger.error(f"Job failed audio verification: {output_path}")
                     else:
-                        state["status"]           = "completed"
-                        state["current_step"]     = "Complete"
-                        state["progress"]         = 100
-                        state["output_video_url"] = f"/outputs/{output_filename}"
+                        with _jobs_lock:
+                            state["status"]           = "completed"
+                            state["current_step"]     = "Complete"
+                            state["progress"]         = 100
+                            state["output_video_url"] = f"/outputs/{output_filename}"
                         logger.info(f"Final MP4 audio stream verified: true")
                         try:
                             history_store.add_history(
@@ -1119,6 +1280,7 @@ async def jobs_start_video_timeline(
                 state["finished_at"]  = time.time()
 
         finally:
+            release_render_lock(job_id)
             try:
                 safe_rmtree(str(job_temp), ignore_errors=True)
             except Exception:
@@ -1199,6 +1361,24 @@ async def jobs_start_media_timeline(
     text_overlay_background_opacity: float = Form(50.0),
     text_overlay_mode: str = Form("whole_video"),
     text_overlay_items: str = Form("[]"),
+    # Captions
+    caption_source: str = Form("none"),
+    caption_config_json: str = Form("{}"),
+    caption_preset: str = Form("viral_bold"),
+    caption_layout: str = Form("auto"),
+    caption_font_scale: float = Form(1.0),
+    caption_max_words: int = Form(5),
+    caption_max_lines: int = Form(2),
+    caption_max_width: int = Form(85),
+    caption_vertical_offset: int = Form(0),
+    caption_line_spacing: str = Form("normal"),
+    caption_style: str = Form(""),
+    caption_position: str = Form("lower_center"),
+    caption_size: str = Form("large"),
+    caption_appearance: str = Form("outline"),
+    caption_primary_color: str = Form("#FFFFFF"),
+    caption_highlight_color: str = Form("#FFE600"),
+    srt_file: Optional[UploadFile] = File(None),
     credit_cost: Optional[int] = Form(None),
 ):
     """
@@ -1246,8 +1426,20 @@ async def jobs_start_media_timeline(
 
     # Set up job temp dir
     job_id   = uuid.uuid4().hex
+
+    if not acquire_render_lock("direct", "media_timeline", job_id):
+        raise HTTPException(409, "A video is currently generating in the Studio. Please wait for it to finish before starting a new one.")
+
     job_temp = TEMP_DIR / job_id
     job_temp.mkdir(parents=True, exist_ok=True)
+    # Save optional SRT file
+    srt_save_path: Optional[str] = None
+    if srt_file is not None and srt_file.filename:
+        srt_save_path = str(job_temp / f"captions_{uuid.uuid4().hex}.srt")
+        content_srt = await srt_file.read()
+        with open(srt_save_path, "wb") as f_srt:
+            f_srt.write(content_srt)
+
 
     # Save required uploads
     zip_path   = str(job_temp / "media.zip")
@@ -1342,6 +1534,39 @@ async def jobs_start_media_timeline(
                     state["current_step"] = step
 
         try:
+            # --- PREPARE CAPTIONS ASS ---
+            from utils import get_resolution
+            target_w, target_h = get_resolution(aspect_ratio, export_resolution)
+
+            caption_ass_path = None
+            if caption_source != "none":
+                from caption_engine import prepare_captions_ass
+                import json
+                try:
+                    caption_config = json.loads(caption_config_json)
+                except:
+                    caption_config = {}
+                caption_config["caption_source"] = caption_source
+                
+                def caption_prog(msg, pct):
+                    progress_callback(5 + int(pct * 0.1), f"Captions: {msg}")
+                try:
+                    caption_ass_path = prepare_captions_ass(
+                        main_audio_path=audio_path,
+                        config=caption_config,
+                        width=target_w,
+                        height=target_h,
+                        progress_callback=caption_prog
+                    )
+                except Exception as e:
+                    logger.error(f"Captions failed: {e}")
+                    with _jobs_lock:
+                        state["warnings"].append(str(e))
+
+            from utils import Profiler
+            profiler = Profiler()
+            profiler.start_stage("MoviePy Generate")
+
             result = generate_media_timeline(
                 audio_path=audio_path,
                 zip_path=zip_path,
@@ -1374,31 +1599,42 @@ async def jobs_start_media_timeline(
                 outro_path=outro_path,
                 cancel_event=state["cancel_event"],
                 progress_callback=progress_callback,
+                caption_ass_path=caption_ass_path,
             )
 
+            profiler.end_stage()
             timeline_report = _format_timeline(result.get("timeline", []))
 
             with _jobs_lock:
                 state["warnings"]        = result.get("warnings", [])
                 state["errors"]          = result.get("errors", [])
                 state["timeline_report"] = timeline_report
+                state["profiler_report"] = profiler.get_report()
                 state["finished_at"]     = time.time()
+                is_cancelled = result.get("cancelled")
+                is_success = result.get("success", False)
 
-                if result.get("cancelled"):
+            if is_cancelled:
+                with _jobs_lock:
                     state["status"]       = "cancelled"
                     state["current_step"] = "Cancelled"
                     state["progress"]     = 0
-                elif result["success"] and os.path.isfile(output_path):
+            else:
+                if is_success and os.path.isfile(output_path):
+                    
+                    
                     if not _verify_mp4_audio(output_path):
-                        state["status"]       = "failed"
-                        state["current_step"] = "Failed"
-                        state["errors"].append("Final video was created without an audio track. Please check the audio pipeline.")
+                        with _jobs_lock:
+                            state["status"]       = "failed"
+                            state["current_step"] = "Failed"
+                            state["errors"].append("Final video was created without an audio track. Please check the audio pipeline.")
                         logger.error(f"Job failed audio verification: {output_path}")
                     else:
-                        state["status"]           = "completed"
-                        state["current_step"]     = "Complete"
-                        state["progress"]         = 100
-                        state["output_video_url"] = f"/outputs/{output_filename}"
+                        with _jobs_lock:
+                            state["status"]           = "completed"
+                            state["current_step"]     = "Complete"
+                            state["progress"]         = 100
+                            state["output_video_url"] = f"/outputs/{output_filename}"
                         logger.info(f"Final MP4 audio stream verified: true")
                         try:
                             history_store.add_history(
@@ -1444,6 +1680,7 @@ async def jobs_start_media_timeline(
                 state["finished_at"]  = time.time()
 
         finally:
+            release_render_lock(job_id)
             try:
                 safe_rmtree(str(job_temp), ignore_errors=True)
             except Exception:
@@ -1745,6 +1982,24 @@ async def api_batch_job_image_timeline(
     music_volume:      float = Form(0.12),
     music_fade:        str   = Form("true"),
     cjid:              Optional[str] = Form(None),
+    # Captions
+    caption_source: str = Form("none"),
+    caption_config_json: str = Form("{}"),
+    caption_preset: str = Form("viral_bold"),
+    caption_layout: str = Form("auto"),
+    caption_font_scale: float = Form(1.0),
+    caption_max_words: int = Form(5),
+    caption_max_lines: int = Form(2),
+    caption_max_width: int = Form(85),
+    caption_vertical_offset: int = Form(0),
+    caption_line_spacing: str = Form("normal"),
+    caption_style: str = Form(""),
+    caption_position: str = Form(""),
+    caption_size: str = Form(""),
+    caption_appearance: str = Form(""),
+    caption_primary_color: str = Form(""),
+    caption_highlight_color: str = Form(""),
+    srt_file: Optional[UploadFile] = File(None),
     credit_cost:       Optional[float] = Form(None),
     credit_reserved:   Optional[str] = Form(None),
     credit_tool_name:  Optional[str] = Form(None),
@@ -1769,6 +2024,19 @@ async def api_batch_job_image_timeline(
                 f.write(content)
             saved_assets[key_name] = safe_name
 
+    
+    srt_save_path: Optional[str] = None
+    if srt_file is not None and srt_file.filename:
+        # Create a persistent temp dir for this batch job's SRT
+        import tempfile
+        import uuid
+        batch_temp = Path(tempfile.gettempdir()) / f"batch_srt_{uuid.uuid4().hex}"
+        batch_temp.mkdir(exist_ok=True)
+        srt_save_path = str(batch_temp / srt_file.filename)
+        content_srt = await srt_file.read()
+        with open(srt_save_path, "wb") as f_srt:
+            f_srt.write(content_srt)
+
     try:
         await save_upload(audio_file, "audio_file")
         await save_upload(audio_zip, "audio_zip")
@@ -1779,6 +2047,30 @@ async def api_batch_job_image_timeline(
         await save_upload(bg_music_file, "bg_music_file")
         
         config = {
+        "caption_source": caption_source,
+        "caption_config_json": caption_config_json,
+        "caption_preset": caption_preset,
+        "caption_layout": caption_layout,
+        "caption_font_scale": caption_font_scale,
+        "caption_max_words": caption_max_words,
+        "caption_max_lines": caption_max_lines,
+        "caption_max_width": caption_max_width,
+        "caption_vertical_offset": caption_vertical_offset,
+        "caption_line_spacing": caption_line_spacing,
+                            "caption_layout": caption_layout,
+                            "caption_font_scale": caption_font_scale,
+                            "caption_max_words": caption_max_words,
+                            "caption_max_lines": caption_max_lines,
+                            "caption_max_width": caption_max_width,
+                            "caption_vertical_offset": caption_vertical_offset,
+                            "caption_line_spacing": caption_line_spacing,
+        "caption_style": caption_style,
+        "caption_position": caption_position,
+        "caption_size": caption_size,
+        "caption_appearance": caption_appearance,
+        "caption_primary_color": caption_primary_color,
+        "caption_highlight_color": caption_highlight_color,
+        "srt_file": srt_save_path if srt_save_path else "",
             "audio_input_mode": audio_input_mode,
             "aspect_ratio": aspect_ratio,
             "export_resolution": export_resolution,
@@ -1901,6 +2193,24 @@ async def api_batch_job_video_timeline(
     intro_file:    Optional[UploadFile] = File(None),
     outro_file:    Optional[UploadFile] = File(None),
     cjid:              Optional[str] = Form(None),
+    # Captions
+    caption_source: str = Form("none"),
+    caption_config_json: str = Form("{}"),
+    caption_preset: str = Form("viral_bold"),
+    caption_layout: str = Form("auto"),
+    caption_font_scale: float = Form(1.0),
+    caption_max_words: int = Form(5),
+    caption_max_lines: int = Form(2),
+    caption_max_width: int = Form(85),
+    caption_vertical_offset: int = Form(0),
+    caption_line_spacing: str = Form("normal"),
+    caption_style: str = Form(""),
+    caption_position: str = Form(""),
+    caption_size: str = Form(""),
+    caption_appearance: str = Form(""),
+    caption_primary_color: str = Form(""),
+    caption_highlight_color: str = Form(""),
+    srt_file: Optional[UploadFile] = File(None),
     credit_cost:       Optional[float] = Form(None),
     credit_reserved:   Optional[str] = Form(None),
     credit_tool_name:  Optional[str] = Form(None),
@@ -1923,6 +2233,19 @@ async def api_batch_job_video_timeline(
                 f.write(content)
             saved_assets[key_name] = safe_name
 
+    
+    srt_save_path: Optional[str] = None
+    if srt_file is not None and srt_file.filename:
+        # Create a persistent temp dir for this batch job's SRT
+        import tempfile
+        import uuid
+        batch_temp = Path(tempfile.gettempdir()) / f"batch_srt_{uuid.uuid4().hex}"
+        batch_temp.mkdir(exist_ok=True)
+        srt_save_path = str(batch_temp / srt_file.filename)
+        content_srt = await srt_file.read()
+        with open(srt_save_path, "wb") as f_srt:
+            f_srt.write(content_srt)
+
     try:
         await save_upload(audio_file, "audio_file")
         await save_upload(audio_zip, "audio_zip")
@@ -1934,6 +2257,30 @@ async def api_batch_job_video_timeline(
         
 
         config = {
+        "caption_source": caption_source,
+        "caption_config_json": caption_config_json,
+        "caption_preset": caption_preset,
+        "caption_layout": caption_layout,
+        "caption_font_scale": caption_font_scale,
+        "caption_max_words": caption_max_words,
+        "caption_max_lines": caption_max_lines,
+        "caption_max_width": caption_max_width,
+        "caption_vertical_offset": caption_vertical_offset,
+        "caption_line_spacing": caption_line_spacing,
+                            "caption_layout": caption_layout,
+                            "caption_font_scale": caption_font_scale,
+                            "caption_max_words": caption_max_words,
+                            "caption_max_lines": caption_max_lines,
+                            "caption_max_width": caption_max_width,
+                            "caption_vertical_offset": caption_vertical_offset,
+                            "caption_line_spacing": caption_line_spacing,
+        "caption_style": caption_style,
+        "caption_position": caption_position,
+        "caption_size": caption_size,
+        "caption_appearance": caption_appearance,
+        "caption_primary_color": caption_primary_color,
+        "caption_highlight_color": caption_highlight_color,
+        "srt_file": srt_save_path if srt_save_path else "",
             "audio_input_mode": audio_input_mode,
             "aspect_ratio": aspect_ratio,
             "export_resolution": export_resolution,
@@ -2052,6 +2399,24 @@ async def api_batch_job_media_timeline(
     intro_file:    Optional[UploadFile] = File(None),
     outro_file:    Optional[UploadFile] = File(None),
     cjid:              Optional[str] = Form(None),
+    # Captions
+    caption_source: str = Form("none"),
+    caption_config_json: str = Form("{}"),
+    caption_preset: str = Form("viral_bold"),
+    caption_layout: str = Form("auto"),
+    caption_font_scale: float = Form(1.0),
+    caption_max_words: int = Form(5),
+    caption_max_lines: int = Form(2),
+    caption_max_width: int = Form(85),
+    caption_vertical_offset: int = Form(0),
+    caption_line_spacing: str = Form("normal"),
+    caption_style: str = Form(""),
+    caption_position: str = Form(""),
+    caption_size: str = Form(""),
+    caption_appearance: str = Form(""),
+    caption_primary_color: str = Form(""),
+    caption_highlight_color: str = Form(""),
+    srt_file: Optional[UploadFile] = File(None),
     credit_cost:       Optional[float] = Form(None),
     credit_reserved:   Optional[str] = Form(None),
     credit_tool_name:  Optional[str] = Form(None),
@@ -2074,6 +2439,19 @@ async def api_batch_job_media_timeline(
                 f.write(content)
             saved_assets[key_name] = safe_name
 
+    
+    srt_save_path: Optional[str] = None
+    if srt_file is not None and srt_file.filename:
+        # Create a persistent temp dir for this batch job's SRT
+        import tempfile
+        import uuid
+        batch_temp = Path(tempfile.gettempdir()) / f"batch_srt_{uuid.uuid4().hex}"
+        batch_temp.mkdir(exist_ok=True)
+        srt_save_path = str(batch_temp / srt_file.filename)
+        content_srt = await srt_file.read()
+        with open(srt_save_path, "wb") as f_srt:
+            f_srt.write(content_srt)
+
     try:
         await save_upload(audio_file, "audio_file")
         await save_upload(audio_zip, "audio_zip")
@@ -2084,6 +2462,30 @@ async def api_batch_job_media_timeline(
         await save_upload(background_music_file, "background_music_file")
         
         config = {
+        "caption_source": caption_source,
+        "caption_config_json": caption_config_json,
+        "caption_preset": caption_preset,
+        "caption_layout": caption_layout,
+        "caption_font_scale": caption_font_scale,
+        "caption_max_words": caption_max_words,
+        "caption_max_lines": caption_max_lines,
+        "caption_max_width": caption_max_width,
+        "caption_vertical_offset": caption_vertical_offset,
+        "caption_line_spacing": caption_line_spacing,
+                            "caption_layout": caption_layout,
+                            "caption_font_scale": caption_font_scale,
+                            "caption_max_words": caption_max_words,
+                            "caption_max_lines": caption_max_lines,
+                            "caption_max_width": caption_max_width,
+                            "caption_vertical_offset": caption_vertical_offset,
+                            "caption_line_spacing": caption_line_spacing,
+        "caption_style": caption_style,
+        "caption_position": caption_position,
+        "caption_size": caption_size,
+        "caption_appearance": caption_appearance,
+        "caption_primary_color": caption_primary_color,
+        "caption_highlight_color": caption_highlight_color,
+        "srt_file": srt_save_path if srt_save_path else "",
             "audio_input_mode": audio_input_mode,
             "aspect_ratio": aspect_ratio,
             "export_resolution": export_resolution,
@@ -2301,7 +2703,11 @@ def api_start_batch_queue():
     )
     if not access["allowed"]:
         raise HTTPException(403, access["reason"])
-        
+
+    lock_status = get_render_lock_status()
+    if lock_status["locked"] and lock_status["source"] == "direct":
+        raise HTTPException(409, "A video is currently generating in the Studio. Please wait for it to finish before starting a batch.")
+
     res = batch_queue_runner.start_runner()
     return JSONResponse(content=res)
 
