@@ -169,3 +169,124 @@ def make_text_overlay(
     except Exception as exc:
         logger.warning(f"Text overlay render failed: {exc}")
         return None
+
+def build_text_overlay_ass(
+    target_w: int, target_h: int, duration: float,
+    config: dict, rows: list = None
+) -> str | None:
+    """
+    Translates TextOverlayConfig directly into an ASS file content, bypassing Pillow.
+    This runs at native FFmpeg speed during the main video encode.
+    """
+    if not config or not config.get("enabled"):
+        return None
+        
+    mode = config.get("mode", "whole_video")
+    
+    font_family = config.get("font_family", "Inter")
+    font_size_pct = config.get("font_size_percent", 5.0)
+    font_size = max(10, int(target_h * (font_size_pct / 100.0)))
+    font_weight = config.get("font_weight", "Bold")
+    bold = -1 if font_weight.lower() in ("bold", "heavy", "black", "800", "900") else 0
+    
+    # Colors
+    def to_ass_color(hex_str, op_pct):
+        # ASS color format: &HAABBGGRR
+        hex_str = str(hex_str).lstrip('#')
+        if len(hex_str) == 3: hex_str = ''.join(c*2 for c in hex_str)
+        try:
+            r, g, b = hex_str[0:2], hex_str[2:4], hex_str[4:6]
+        except:
+            r, g, b = "FF", "FF", "FF"
+        a_val = int(255 * (1.0 - (max(0, min(100, op_pct)) / 100.0)))
+        a = f"{a_val:02X}"
+        return f"&H{a}{b}{g}{r}"
+
+    op = config.get("opacity", 100.0)
+    primary_c = to_ass_color(config.get("color", "#FFFFFF"), op)
+    secondary_c = primary_c
+    
+    stroke_c = to_ass_color(config.get("stroke_color", "#000000"), op)
+    stroke_w = max(1, int(font_size * 0.04)) if config.get("stroke_enabled", True) else 0
+    
+    shadow_en = config.get("shadow_enabled", True)
+    shadow_w = max(1, int(font_size * 0.05)) if shadow_en and stroke_w == 0 else 0
+    
+    bg_en = config.get("background_enabled", False)
+    bg_c = to_ass_color(config.get("background_color", "#000000"), config.get("background_opacity", 50.0))
+    
+    if bg_en:
+        border_style = 3
+        outline = max(2, int(font_size * 0.05))
+        back_color = bg_c
+    else:
+        border_style = 1
+        outline = stroke_w
+        back_color = "&H99000000" if shadow_en else "&HFF000000"
+        
+    align_str = config.get("align", "center")
+    
+    # 1=BL, 2=BC, 3=BR, 4=ML, 5=MC, 6=MR, 7=TL, 8=TC, 9=TR
+    # However, since we define exact pos(x,y), alignment mainly controls text anchoring.
+    if align_str == "left": alignment = 4
+    elif align_str == "right": alignment = 6
+    else: alignment = 5
+    
+    ass_lines = [
+        "[Script Info]",
+        "ScriptType: v4.00+",
+        f"PlayResX: {target_w}",
+        f"PlayResY: {target_h}",
+        "WrapStyle: 1",
+        "",
+        "[V4+ Styles]",
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, "
+        "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, "
+        "BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+        f"Style: OverlayStyle,{font_family},{font_size},{primary_c},{secondary_c},{stroke_c},{back_color},"
+        f"{bold},0,0,0,100,100,0,0,{border_style},{outline},{shadow_w},{alignment},0,0,0,1",
+        "",
+        "[Events]",
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
+    ]
+    
+    def sec_to_ass(s):
+        h = int(s // 3600)
+        m = int((s % 3600) // 60)
+        secs = s % 60
+        return f"{h}:{m:02d}:{secs:05.2f}"
+        
+    def add_event(txt, start_s, end_s):
+        if not txt: return
+        txt = txt.strip().replace('\n', '\\N')
+        x = int(target_w * (config.get("x_percent", 50.0) / 100.0))
+        y = int(target_h * (config.get("y_percent", 90.0) / 100.0))
+        # Use \\pos tags to absolutely position the anchored text
+        ass_lines.append(
+            f"Dialogue: 1,{sec_to_ass(start_s)},{sec_to_ass(end_s)},OverlayStyle,,0,0,0,,{{\\pos({x},{y})}}{txt}"
+        )
+
+    if mode == "whole_video":
+        add_event(config.get("text", ""), 0, duration)
+    elif mode == "timed_text":
+        from utils import parse_time
+        for idx, itm in enumerate(config.get("items", [])):
+            try:
+                s_str = str(itm.get("start", "00:00"))
+                e_str = str(itm.get("end", "00:05"))
+                s = float(s_str) if s_str.replace('.','',1).isdigit() else parse_time(s_str)
+                e = float(e_str) if e_str.replace('.','',1).isdigit() else parse_time(e_str)
+                if e > s:
+                    add_event(itm.get("text", ""), s, e)
+            except Exception:
+                pass
+    elif mode == "csv_text" and rows:
+        for r in rows:
+            txt = r.get("text", "").strip()
+            if txt:
+                add_event(txt, r["start"], r["end"])
+                
+    if len(ass_lines) <= 12: # No events added
+        return None
+        
+    return "\n".join(ass_lines)

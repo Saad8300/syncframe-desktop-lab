@@ -273,13 +273,13 @@ def apply_ass_filters_with_ffmpeg(
 
     if caption_ass_path and os.path.exists(caption_ass_path):
         cwd = str(Path(caption_ass_path).parent)
-        filters.append(f"ass='{Path(caption_ass_path).name}'")
+        filters.append(f"ass={Path(caption_ass_path).name}")
         
     if overlay_ass_path and os.path.exists(overlay_ass_path):
         # We assume if both exist, they are in the same temp dir
         if not cwd:
             cwd = str(Path(overlay_ass_path).parent)
-        filters.append(f"ass='{Path(overlay_ass_path).name}'")
+        filters.append(f"ass={Path(overlay_ass_path).name}")
 
     if not filters:
         # Just copy if no filters
@@ -287,8 +287,11 @@ def apply_ass_filters_with_ffmpeg(
         shutil.copy2(input_video_path, output_video_path)
         return
 
+    from caption_engine import get_ffmpeg_cmd
+    ffmpeg_cmd = get_ffmpeg_cmd()
+
     cmd = [
-        "ffmpeg", "-y",
+        ffmpeg_cmd, "-y",
         "-i", input_video_path,
         "-vf", ",".join(filters),
         "-c:v", "libx264",
