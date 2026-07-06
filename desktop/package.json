@@ -1,6 +1,6 @@
 {
   "name": "syncframe-desktop",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Desktop Foundation for SyncFrame Studio",
   "main": "main.js",
   "scripts": {
@@ -43,7 +43,9 @@
       "protocols": [
         {
           "name": "SyncFrame Studio Auth",
-          "schemes": ["syncframe"]
+          "schemes": [
+            "syncframe"
+          ]
         }
       ]
     },
