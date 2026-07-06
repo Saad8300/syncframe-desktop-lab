@@ -440,87 +440,26 @@ def _process_job(job: Dict[str, Any]):
             aspect_ratio = config.get("aspect_ratio", "9:16")
             render_profile = config.get("render_profile", "balanced")
 
-            # Try per-row history
-            rows_saved = False
-            if csv_path and os.path.exists(csv_path):
-                try:
-                    with open(csv_path, "r", encoding="utf-8") as f:
-                        csv_text = f.read()
-                    ttype = {
-                        "image_timeline": "image",
-                        "video_timeline": "video",
-                        "media_timeline": "media"
-                    }.get(source_tool, "image")
-                    success, rows, _total_dur, errors, _warnings, _norm = parse_timeline_csv(csv_text, ttype)
-                    if success and rows:
-                        from credit_estimator import EstimateRequest, estimate_credits as _estimate_credits
-                        # Determine which tool name the estimator should use for this source_tool
-                        estimator_tool = {
-                            "image_timeline": "video_export",
-                            "video_timeline": "video_timeline",
-                            "media_timeline": "media_timeline",
-                        }.get(source_tool, "video_export")
-                        for row in rows:
-                            row_dur = max(1.0, float(row.get("end", 0)) - float(row.get("start", 0)))
-                            # Call the estimator directly — same logic as the frontend
-                            try:
-                                est_req = EstimateRequest(
-                                    tool=estimator_tool,
-                                    duration_seconds=row_dur,
-                                    resolution=resolution,
-                                    count=1
-                                )
-                                est_resp = _estimate_credits(est_req)
-                                row_credits = est_resp["required_credits"]
-                            except Exception:
-                                row_credits = None
-                            row_file = row.get("file") or row.get("asset") or output_filename
-                            history_store.add_history(
-                                tool=tool_name,
-                                tool_label=tool_label,
-                                output_name=row_file,
-                                output_type="video",
-                                output_url=f"/outputs/{output_filename}",
-                                file_extension="mp4",
-                                duration_seconds=row_dur,
-                                file_size_bytes=file_size,
-                                resolution=resolution,
-                                aspect_ratio=aspect_ratio,
-                                render_profile=render_profile,
-                                metadata={
-                                    "batch_job_id": job_id,
-                                    "source_tool": source_tool,
-                                    "generated_via": "batch_queue",
-                                    "clip_start": row.get("start"),
-                                    "clip_end": row.get("end"),
-                                },
-                                credit_cost=row_credits
-                            )
-                        rows_saved = True
-                except Exception as parse_err:
-                    logger.warning(f"Per-row history failed, falling back to single record: {parse_err}")
-
-            # Fallback: one record for the whole job
-            if not rows_saved:
-                history_store.add_history(
-                    tool=tool_name,
-                    tool_label=tool_label,
-                    output_name=output_filename,
-                    output_type="video",
-                    output_url=f"/outputs/{output_filename}",
-                    file_extension="mp4",
-                    duration_seconds=total_duration_seconds,
-                    file_size_bytes=file_size,
-                    resolution=resolution,
-                    aspect_ratio=aspect_ratio,
-                    render_profile=render_profile,
-                    metadata={
-                        "batch_job_id": job_id,
-                        "source_tool": source_tool,
-                        "generated_via": "batch_queue"
-                    },
-                    credit_cost=total_credit_cost
-                )
+            # Single record for the whole job
+            history_store.add_history(
+                tool=tool_name,
+                tool_label=tool_label,
+                output_name=output_filename,
+                output_type="video",
+                output_url=f"/outputs/{output_filename}",
+                file_extension="mp4",
+                duration_seconds=total_duration_seconds,
+                file_size_bytes=file_size,
+                resolution=resolution,
+                aspect_ratio=aspect_ratio,
+                render_profile=render_profile,
+                metadata={
+                    "batch_job_id": job_id,
+                    "source_tool": source_tool,
+                    "generated_via": "batch_queue"
+                },
+                credit_cost=total_credit_cost
+            )
 
         except Exception as he:
             logger.error(f"Failed to save batch history: {he}")
