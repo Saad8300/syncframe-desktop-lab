@@ -25,6 +25,8 @@ import BatchVideoGeneratorPage from './components/BatchVideoGeneratorPage'
 import PreflightCheck, { buildPreflightChecks } from './components/PreflightCheck'
 import ExportPresetPanel from './components/ExportPresetPanel'
 import { TextOverlayPanel } from './components/TextOverlayPanel'
+import { CaptionSettingsSection } from './components/CaptionSettingsSection'
+import { CaptionConfig, DEFAULT_CAPTION_CONFIG } from './types/caption'
 import { AccessLimitModal } from './components/billing/AccessLimitModal'
 import NotificationToastProvider from './components/NotificationToastProvider'
 import { notifyBackendDisconnected, notifyBackendReconnected, notifyRenderCompleted, notifyRenderFailed } from './utils/notifications'
@@ -49,8 +51,10 @@ import { parseTimelineCsv } from './utils/timelineTimeParser'
 import { usePlan } from './hooks/usePlan'
 import { useCredits } from './hooks/useCredits'
 import { canUseTool, Plan } from './lib/plans'
-import { estimateCredits, reserveCredits, finalizeJob } from './lib/credits'
+import { estimateCredits, reserveCredits, finalizeJob, classifyReservationError } from './lib/credits'
 import type { ToolAccessResult } from './lib/plans'
+import { useRenderLock } from './hooks/useRenderLock'
+import { useCreditEstimate } from './hooks/useCreditEstimate'
 
 // ── Default settings ────────────────────────────────────────────────────────
 
@@ -228,14 +232,14 @@ export default function App() {
   const { user, isAuthenticated, loading: authLoading, requireAuth } = useAuth()
   const { plan, loading: planLoading } = usePlan()
   const { remaining } = useCredits()
+  const { lockState } = useRenderLock()
 
-  // ── Auth: login gate ─────────────────────────────────────────────────────────
-  // We no longer hard-block the entire app on login.
-  // Instead, the AuthModal will appear when requireAuth() is called.
 
+
+  // ── Generation Handlers ───────────────────────────────────────────────────
 
   const [appSettingsState, setAppSettingsState] = useState<AppSettings>(() => loadSettings())
-  
+
   // Apply theme and accent on load and change
   useEffect(() => {
     applyThemeMode(appSettingsState.themeMode)
@@ -285,6 +289,11 @@ export default function App() {
       const pending = consumePendingTemplate('image')
       if (pending) {
         setSettings(s => ({ ...s, ...pending }))
+      if (pending.captionConfig) {
+        const cc = { ...pending.captionConfig };
+        delete cc.srtFile;
+        setCaptionConfig(cc);
+      }
       }
     }
   }, [activeView, isTool])
@@ -293,7 +302,7 @@ export default function App() {
     setActiveView(mode)
     if (mode !== 'landing') {
       try { localStorage.setItem('appMode', mode) } catch { /* noop */ }
-      
+
       // Update lastUsedPage
       saveSettings({ lastUsedPage: mode })
     }
@@ -337,11 +346,11 @@ export default function App() {
         setCsvFile(null);
         return;
       }
-      
+
       if (result.warnings && result.warnings.length > 0) {
         alert("Warnings:\n" + result.warnings.join("\n"));
       }
-      
+
       const blob = new Blob([result.normalizedCsv], { type: 'text/csv' });
       const newFile = new File([blob], file.name, { type: 'text/csv' });
       setCsvFile(newFile);
@@ -359,11 +368,18 @@ export default function App() {
       ...DEFAULT_SETTINGS,
       outputName: s.defaultVideoFilename,
       exportResolution: s.defaultExportPreset.includes('4k') ? '4K' : '1080p',
-      aspectRatio: s.defaultExportPreset.includes('tiktok') ? '9:16' : 
-                   s.defaultExportPreset.includes('youtube') ? '16:9' : 
+      aspectRatio: s.defaultExportPreset.includes('tiktok') ? '9:16' :
+                   s.defaultExportPreset.includes('youtube') ? '16:9' :
                    s.defaultExportPreset === 'instagram_reel' ? '9:16' :
                    s.defaultExportPreset === 'square_post' ? '1:1' : '9:16',
     }
+  })
+  const [captionConfig, setCaptionConfig] = useState<CaptionConfig>(DEFAULT_CAPTION_CONFIG)
+
+  const { estimatedCredits: liveCreditEstimate, isEstimating: isEstimatingCredits } = useCreditEstimate('video_export', {
+    duration_seconds: Math.max(1, Math.ceil(Number(audioDuration) || 60)),
+    resolution: settings.exportResolution,
+    is_premium_template: false
   })
 
   // Generation state
@@ -384,7 +400,7 @@ export default function App() {
 
   // Health check watch for notifications
   const [prevHealth, setPrevHealth] = useState<boolean | null>(null)
-  
+
   useEffect(() => {
     if (healthOk !== prevHealth) {
       if (prevHealth === true && healthOk === false) {
@@ -469,9 +485,14 @@ export default function App() {
         })
       } catch (err: any) {
         setActiveClientJobId(null)
-        setLimitModalReason(err.message || "Internet connection is required to verify credits before starting this export.")
-        setLimitModalRequiredPlan(undefined)
-        setLimitModalOpen(true)
+        const classified = classifyReservationError(err)
+        if (classified.type === 'pricing_mismatch' || classified.type === 'unknown') {
+          alert(`Error: ${classified.message}`)
+        } else {
+          setLimitModalReason(classified.message)
+          setLimitModalRequiredPlan(undefined)
+          setLimitModalOpen(true)
+        }
         return
       }
     }
@@ -479,7 +500,7 @@ export default function App() {
     notificationSentRef.current = false;
     setStatus('uploading')
     try {
-      const activeSettings = computeActiveSettings(settings);
+      const activeSettings: any = { ...computeActiveSettings(settings), captionConfig };
       const { job_id } = await startJob(audioInputMode, audioFile, audioZip, imagesZip, csvFile, activeSettings, introFile, outroFile, bgMusicFile, estimatedCredits)
       setCurrentJobId(job_id); setStatus('generating')
     } catch (err) {
@@ -497,11 +518,43 @@ export default function App() {
     if ((audioInputMode === 'single' ? !audioFile : !audioZip) || !imagesZip || !csvFile) return
 
     const durationSeconds = Math.max(1, Math.ceil(Number(audioDuration) || 60))
-    const estimatedCredits = await estimateCredits('video_export', {
-      resolution: settings.exportResolution,
-      is_premium_template: false,
-      duration_seconds: durationSeconds
-    })
+
+    let estimatedCredits = 0
+    try {
+      if (csvFile) {
+        const text = await csvFile.text()
+        const parsed = parseTimelineCsv(text, 'image')
+        if (parsed.success && parsed.rows.length > 0) {
+          for (const row of parsed.rows) {
+            const rowDur = Math.max(1, Math.ceil(row.end - row.start))
+            estimatedCredits += await estimateCredits('video_export', {
+              resolution: settings.exportResolution,
+              is_premium_template: false,
+              duration_seconds: rowDur
+            })
+          }
+        } else {
+          estimatedCredits = await estimateCredits('video_export', {
+            resolution: settings.exportResolution,
+            is_premium_template: false,
+            duration_seconds: durationSeconds
+          })
+        }
+      } else {
+        estimatedCredits = await estimateCredits('video_export', {
+          resolution: settings.exportResolution,
+          is_premium_template: false,
+          duration_seconds: durationSeconds
+        })
+      }
+    } catch (err) {
+      estimatedCredits = await estimateCredits('video_export', {
+        resolution: settings.exportResolution,
+        is_premium_template: false,
+        duration_seconds: durationSeconds
+      })
+    }
+
 
     const access = canUseTool(plan, remaining, 'batch_video', {
       resolution: settings.exportResolution,
@@ -520,7 +573,7 @@ export default function App() {
     let reserved = false
 
     try {
-      const activeSettings: any = computeActiveSettings(settings);
+      const activeSettings: any = { ...computeActiveSettings(settings), captionConfig };
 
       if (user) {
         cjid = crypto.randomUUID()
@@ -530,8 +583,13 @@ export default function App() {
           })
           reserved = true
         } catch (err: any) {
-          setLimitModalReason(err.message || 'Internet connection is required to verify credits before starting this export.')
-          setLimitModalOpen(true)
+          const classified = classifyReservationError(err)
+          if (classified.type === 'pricing_mismatch' || classified.type === 'unknown') {
+            alert(`Error: ${classified.message}`)
+          } else {
+            setLimitModalReason(classified.message)
+            setLimitModalOpen(true)
+          }
           setIsQueuing(false)
           return
         }
@@ -600,7 +658,7 @@ export default function App() {
     setCancelledMsg("Render cancelled successfully.")
     setTimeout(() => setCancelledMsg(null), 4000)
     setResult(null)
-    
+
     if (user && activeClientJobId) {
       await finalizeJob(activeClientJobId, 'cancelled')
       setActiveClientJobId(null)
@@ -730,12 +788,12 @@ export default function App() {
         {/* Safe fallback for unknown views */}
         {![
           'landing', 'tools', 'dashboard', 'history', 'templates', 'settings',
-          'tool:audio_merger', 'tool:script_timestamp', 'tool:media', 
+          'tool:audio_merger', 'tool:script_timestamp', 'tool:media',
           'tool:batch_video', 'batch_video', 'tool:video', 'tool:image'
         ].includes(activeView as string) && <StudioToolsPage onSelectTool={v => setActiveView(`tool:${v}` as ViewMode)} />}
         {activeView === 'tools' && <StudioToolsPage onSelectTool={v => setActiveView(`tool:${v}` as ViewMode)} />}
         {activeView === 'dashboard' && <StudioDashboardPage />}
-        {activeView === 'history' && <StudioHistoryPage />}
+        {activeView === 'history' && <StudioHistoryPage onNavigate={(v: string) => setActiveView(v as any)} />}
         {activeView === 'templates' && <StudioTemplatesPage onUseTemplate={(tool) => setActiveView(`tool:${tool}` as ViewMode)} />}
         {activeView === 'settings' && <StudioSettingsPage />}
 
@@ -827,10 +885,10 @@ export default function App() {
                   subtitle="Create videos from images, audio, and timestamp CSV files."
                 />
                 <div className="flex flex-col xl:flex-row gap-6 items-start mt-6">
-        
+
                   {/* ── LEFT COLUMN ── */}
                   <div className="flex-1 min-w-0 space-y-6">
-        
+
                     {/* Audio duration warning */}
                     {audioDuration !== null && audioDuration > 600 && (
                       <div className="alert-warning animate-fade-in">
@@ -842,7 +900,7 @@ export default function App() {
                         </p>
                       </div>
                     )}
-        
+
                     {/* Source Files card */}
                     <div className="card p-5 space-y-5">
                       <div className="flex items-center justify-between">
@@ -851,7 +909,7 @@ export default function App() {
                           <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>Three required files to generate your video</p>
                         </div>
                       </div>
-        
+
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         {audioInputMode === 'single' ? (
                           <FileDropZone
@@ -901,7 +959,7 @@ export default function App() {
                           required
                         />
                       </div>
-        
+
                       <div className="flex justify-start">
                         <div className="flex gap-2 p-1 bg-[var(--bg-input)] rounded-lg w-full sm:w-1/3">
                           <button
@@ -931,7 +989,7 @@ export default function App() {
                         </div>
                       </div>
                     </div>
-        
+
                     {/* Export Preset card */}
                     <div className="card p-5">
                       <ExportPresetPanel
@@ -956,7 +1014,7 @@ export default function App() {
                         }))}
                       />
                     </div>
-        
+
                     {/* Video Settings card */}
                     <div className="card p-5 space-y-4">
                       <div className="flex items-center justify-between">
@@ -968,21 +1026,21 @@ export default function App() {
                           Save as Template
                         </button>
                       </div>
-        
+
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                         <Sel id="aspect-ratio" label="Aspect Ratio" value={settings.aspectRatio} disabled={isLoading} onChange={v => setSettings({...settings, aspectRatio: v as any})}
                           options={[ { value: '9:16', label: '9:16 Vertical' }, { value: '16:9', label: '16:9 Landscape' }, { value: '1:1', label: '1:1 Square' } ]} />
-                        
+
                         <Sel id="export-resolution" label="Resolution" value={settings.exportResolution} disabled={isLoading} onChange={v => setSettings({...settings, exportResolution: v as any})}
                           options={[ { value: '720p', label: '720p Fast' }, { value: '1080p', label: '1080p HD' }, { value: '2K', label: '2K Sharp' }, { value: '4K', label: '4K Max' } ]} />
-        
+
                         <Sel id="fit-mode" label="Fit Mode" value={settings.fitMode} disabled={isLoading} onChange={v => setSettings({...settings, fitMode: v as any})}
                           options={[ { value: 'cover', label: 'Cover (Crop)' }, { value: 'contain', label: 'Contain (Pad)' } ]} />
-        
+
                         <Sel id="render-profile" label="Render Profile" value={settings.renderProfile} disabled={isLoading} onChange={v => setSettings({...settings, renderProfile: v as any})}
                           options={[ { value: 'fast_preview', label: 'Fast Preview' }, { value: 'balanced', label: 'Balanced' }, { value: 'high_quality', label: 'High Quality' } ]} />
                       </div>
-        
+
                       <div className="space-y-1">
                         <label htmlFor="output-name" className="form-label">Output Filename</label>
                         <div className="flex items-center gap-2">
@@ -998,14 +1056,14 @@ export default function App() {
                         </div>
                       </div>
                     </div>
-        
+
                     {/* Timeline Styling / Motion card */}
                     <div className="card p-5 space-y-4">
                       <div>
                         <h2 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Timeline Styling / Motion</h2>
                         <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>Apply transitions and motion to your media.</p>
                       </div>
-        
+
                       <div className="grid grid-cols-2 gap-4">
                         <Sel id="style-preset" label="Style Preset" value={settings.stylePreset} disabled={isLoading} onChange={v => {
                             const preset = v as any;
@@ -1036,7 +1094,7 @@ export default function App() {
                             { value: 'dramatic_shorts', label: 'Dramatic Shorts' }
                           ]} />
                       </div>
-        
+
                       <div className="grid grid-cols-2 gap-4">
                         <Sel id="motion-effect" label="Motion Effect" value={settings.motionEffect} disabled={isLoading} onChange={v => setSettings({...settings, motionEffect: v as any, zoomEffect: v === 'slow_zoom_in' ? 'slow_zoom_in' : 'none'})}
                           options={[
@@ -1045,10 +1103,10 @@ export default function App() {
                             { value: 'pan_up', label: 'Pan Up' }, { value: 'pan_down', label: 'Pan Down' }, { value: 'subtle_random', label: 'Subtle Random' },
                             { value: 'dynamic_shorts', label: 'Dynamic Shorts' }
                           ]} />
-        
+
                         <Sel id="motion-intensity" label="Motion Intensity" value={settings.motionIntensity} disabled={isLoading} onChange={v => setSettings({...settings, motionIntensity: v as any})}
                           options={[ { value: 'low', label: 'Low' }, { value: 'medium', label: 'Medium' }, { value: 'high', label: 'High' } ]} />
-        
+
                         <Sel id="transition" label="Transition" value={settings.transition} disabled={isLoading} onChange={v => setSettings({...settings, transition: v as any})}
                           options={[
                             { value: 'none', label: 'None' }, { value: 'fade', label: 'Fade' }, { value: 'crossfade', label: 'Crossfade' },
@@ -1057,16 +1115,16 @@ export default function App() {
                             { value: 'push_left', label: 'Push Left' }, { value: 'push_right', label: 'Push Right' }, { value: 'zoom_in', label: 'Zoom In' },
                             { value: 'zoom_out', label: 'Zoom Out' }, { value: 'blur_crossfade', label: 'Blur Crossfade' }, { value: 'flash', label: 'Flash' }
                           ]} />
-        
+
                         <Sel id="transition-duration" label="Transition Duration" value={settings.transitionDuration} disabled={isLoading} onChange={v => setSettings({...settings, transitionDuration: v as any})}
                           options={[ { value: '0.2', label: '0.2s' }, { value: '0.5', label: '0.5s' }, { value: '0.8', label: '0.8s' }, { value: '1.0', label: '1.0s' } ]} />
-        
+
                         <Sel id="visual-effect" label="Visual Style" value={settings.visualEffect} disabled={isLoading} onChange={v => setSettings({...settings, visualEffect: v as any})}
                           options={[
                             { value: 'none', label: 'None' }, { value: 'cinematic', label: 'Cinematic' }, { value: 'warm', label: 'Warm' },
                             { value: 'high_contrast', label: 'High Contrast' }, { value: 'black_and_white', label: 'Black & White' }, { value: 'clean_bright', label: 'Clean Bright' }
                           ]} />
-        
+
                         <Sel id="effect-strength" label="Style Strength" value={settings.effectStrength} disabled={isLoading} onChange={v => setSettings({...settings, effectStrength: v as any})}
                           options={[ { value: 'low', label: 'Low' }, { value: 'medium', label: 'Medium' }, { value: 'high', label: 'High' } ]} />
                       </div>
@@ -1077,7 +1135,7 @@ export default function App() {
                         <h2 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Background Music</h2>
                         <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>Optional music track mixed under the main voice audio.</p>
                       </div>
-                      
+
                       <FileDropZone
                         id="bg-music-upload"
                         label="Upload Music"
@@ -1088,7 +1146,7 @@ export default function App() {
                         onChange={setBgMusicFile}
                         disabled={isLoading}
                       />
-        
+
                       {bgMusicFile && (
                         <div className="space-y-3 mt-4">
                           <div className="flex items-center gap-2 mt-1 mb-3">
@@ -1104,7 +1162,7 @@ export default function App() {
                               onChange={e => setSettings({...settings, musicVolume: Number(e.target.value)})}
                               className="w-full" disabled={isLoading} />
                           </div>
-        
+
                           <div className="flex flex-col gap-2">
                             <label className="flex items-center gap-2 text-[12px]" style={{ color: 'var(--text-primary)', cursor: isLoading ? 'not-allowed' : 'pointer' }}>
                               <input type="checkbox" checked={settings.musicFade} onChange={e => setSettings({...settings, musicFade: e.target.checked})} disabled={isLoading} />
@@ -1115,26 +1173,33 @@ export default function App() {
                       )}
                     </div>
 
-                    {/* Text Overlay card */}
-                    <TextOverlayPanel 
-                      settings={settings} 
-                      onChange={updates => setSettings(s => ({ ...s, ...updates }))} 
+
+                    <CaptionSettingsSection
+                      config={captionConfig}
+                      onChange={setCaptionConfig}
+                      disabled={isLoading}
                     />
-        
-        
-        
+
+                    {/* Text Overlay card */}
+                    <TextOverlayPanel
+                      settings={settings}
+                      onChange={updates => setSettings(s => ({ ...s, ...updates }))}
+                    />
+
+
+
                     {/* Results */}
                     {result && <ResultsPanel result={result} settings={settings} />}
                   </div>
-        
+
                   {/* ── RIGHT COLUMN ── */}
                   <div className="xl:w-[320px] shrink-0 space-y-6">
-        
+
                     {/* Generate Button */}
                     <div className="card p-5 space-y-4">
                       {/* Action card title */}
                       <h2 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Action</h2>
-                      
+
                       {/* Preflight Check */}
                       <PreflightCheck
                         checks={buildPreflightChecks({
@@ -1145,26 +1210,24 @@ export default function App() {
                           csvReady: !!csvFile,
                         })}
                       />
-        
+
                       <button
                         onClick={handleGenerate}
-                        disabled={!canGenerate}
+                        disabled={!canGenerate || lockState.locked}
                         className={`w-full relative overflow-hidden transition-all duration-300 flex items-center justify-center gap-2 rounded-xl text-sm font-bold active:scale-[0.98] ${
-                          canGenerate
-                            ? 'active:brightness-95'
-                            : 'opacity-50 cursor-not-allowed'
+                          (canGenerate && !lockState.locked) ? 'bg-indigo-600 hover:bg-indigo-500 py-4' : 'bg-transparent py-4'
                         }`}
                         style={{
-                          height: 52,
-                          background: canGenerate ? 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)' : 'var(--bg-elevated)',
-                          boxShadow: canGenerate ? '0 4px 16px rgba(99,102,241,0.35)' : 'none',
-                          color: canGenerate ? '#fff' : 'var(--text-muted)',
-                          border: canGenerate ? 'none' : '1px solid var(--border-default)'
+                          boxShadow: (canGenerate && !lockState.locked) ? '0 4px 16px rgba(99,102,241,0.35)' : 'none',
+                          color: (canGenerate && !lockState.locked) ? '#fff' : 'var(--text-muted)',
+                          border: (canGenerate && !lockState.locked) ? 'none' : '1px solid var(--border-default)'
                         }}
-                        onMouseEnter={e => { if (canGenerate) (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 10px 28px rgba(99,102,241,0.55)' }}
-                        onMouseLeave={e => { if (canGenerate) (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 16px rgba(99,102,241,0.35)' }}
+                        onMouseEnter={e => { if (canGenerate && !lockState.locked) (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 10px 28px rgba(99,102,241,0.55)' }}
+                        onMouseLeave={e => { if (canGenerate && !lockState.locked) (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 16px rgba(99,102,241,0.35)' }}
                       >
-                        {isLoading ? (
+                        {lockState.locked ? (
+                          <>Another video is rendering</>
+                        ) : isLoading ? (
                           <><IconLoader size={18} className="animate-spin" />Generating…</>
                         ) : canGenerate ? (
                           <><IconZap size={18} />Generate Video</>
@@ -1172,6 +1235,12 @@ export default function App() {
                           <>Select Required Files</>
                         )}
                       </button>
+
+                      {canGenerate && !lockState.locked && liveCreditEstimate !== null && (
+                        <div className="text-center text-xs text-[var(--text-muted)] font-medium mt-1">
+                           {isEstimatingCredits ? 'Estimating cost...' : `Estimated cost: ${liveCreditEstimate} credits`}
+                        </div>
+                      )}
 
                       {/* Add to Batch Queue */}
                       <button
@@ -1217,17 +1286,17 @@ export default function App() {
                         </div>
                       )}
 
-        
-        
+
+
                     </div>
-        
+
                     {/* CSV Format Guide */}
                     <div className="card p-5 space-y-4">
                       <CsvGuide />
                     </div>
-        
+
                   </div>
-        
+
         </div>
         </main>
       )}

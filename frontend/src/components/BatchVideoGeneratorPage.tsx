@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useAuth } from '../auth/AuthProvider'
 import StudioPageHeader from './StudioPageHeader'
 import {
   IconFilm, IconPlay, IconPause, IconSquare, IconTrash,
   IconLoader, IconCopy, IconSearch, IconFilter, IconArrowUp, IconArrowDown,
-  IconCheck, IconX, IconRefreshCw
+  IconCheck, IconX, IconRefreshCw, IconAlertCircle
 } from './icons'
 import {
   API_BASE_URL, apiUrl,
@@ -23,21 +24,23 @@ import { finalizeJob } from '../lib/credits'
 import type { ToolAccessResult } from '../lib/plans'
 import { canUseTool } from '../lib/plans'
 import { dispatchToast } from '../utils/notifications'
+import { useRenderLock } from '../hooks/useRenderLock'
 
 export default function BatchVideoGeneratorPage() {
   const { requireAuth, user } = useAuth()
   const { plan } = usePlan()
   const { remaining } = useCredits()
+  const { lockState } = useRenderLock()
   const [jobs, setJobs] = useState<any[]>([])
   const [stats, setStats] = useState<any>({
     total: 0, queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0
   })
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  
+
   const [batchState, setBatchState] = useState<BatchState | null>(null)
   const [isQueueLoading, setIsQueueLoading] = useState(false)
-  
+
   const [prevIsRunning, setPrevIsRunning] = useState<boolean | null>(null)
   const [prevFailedCount, setPrevFailedCount] = useState<number | null>(null)
 
@@ -48,7 +51,7 @@ export default function BatchVideoGeneratorPage() {
       notifyBatchQueueCompleted(stats.completed, stats.failed)
     }
 
-    
+
     if (prevFailedCount !== null && stats.failed > prevFailedCount) {
       notifyBatchJobFailed("A job in the batch queue failed.")
     }
@@ -56,7 +59,7 @@ export default function BatchVideoGeneratorPage() {
     if (batchState) setPrevIsRunning(batchState.is_running)
     if (stats) setPrevFailedCount(stats.failed)
   }, [batchState?.is_running, stats?.failed])
-  
+
   // Track individual job completion to finalize their specific cjids
   useEffect(() => {
     if (!user) return
@@ -93,14 +96,14 @@ export default function BatchVideoGeneratorPage() {
       setFinalizedJobIds(newFinalized)
     }
   }, [jobs, user, finalizedJobIds])
-  
+
   const [filterStatus, setFilterStatus] = useState<string>('all')
   const [filterTool, setFilterTool] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedJob, setSelectedJob] = useState<any | null>(null)
-  
+
   const [confirmAction, setConfirmAction] = useState<{title: string, msg: string, action: () => void} | null>(null)
-  
+
   // Access Limit Modal state
   const [limitModalOpen, setLimitModalOpen] = useState(false)
   const [limitModalReason, setLimitModalReason] = useState('')
@@ -141,24 +144,24 @@ export default function BatchVideoGeneratorPage() {
       "Delete Job",
       "Are you sure you want to remove this job from the queue?",
       async () => {
-        try { await deleteBatchJob(id); loadData(); if(selectedJob?.id===id) setSelectedJob(null) } 
+        try { await deleteBatchJob(id); loadData(); if(selectedJob?.id===id) setSelectedJob(null) }
         catch (err) { dispatchToast('info', 'Notice', String("Failed to delete job: " + err)) }
       }
     )
   }
 
   const handleClearCompleted = () => requireConfirm(
-    "Clear Completed", "Remove all completed jobs from the queue?", 
+    "Clear Completed", "Remove all completed jobs from the queue?",
     async () => { try { await clearCompletedBatchJobs(); loadData() } catch(err){ dispatchToast('info', 'Notice', String(err)) } }
   )
 
   const handleClearFailed = () => requireConfirm(
-    "Clear Failed", "Remove all failed jobs from the queue?", 
+    "Clear Failed", "Remove all failed jobs from the queue?",
     async () => { try { await clearFailedBatchJobs(); loadData() } catch(err){ dispatchToast('info', 'Notice', String(err)) } }
   )
 
   const handleClearAll = () => requireConfirm(
-    "Clear All Jobs", "This will permanently remove all jobs (except running ones). History logs are preserved.", 
+    "Clear All Jobs", "This will permanently remove all jobs (except running ones). History logs are preserved.",
     async () => { try { await clearAllBatchJobs(); loadData() } catch(err){ dispatchToast('info', 'Notice', String(err)) } }
   )
 
@@ -170,30 +173,30 @@ export default function BatchVideoGeneratorPage() {
     if (!requireAuth()) return
 
     setIsQueueLoading(true)
-    try { 
-      await startBatchQueueWithValidation(); 
-      await loadData() 
-    } catch (e: any) { 
-      dispatchToast('info', 'Notice', String(e.message || e)) 
-    } 
+    try {
+      await startBatchQueueWithValidation();
+      await loadData()
+    } catch (e: any) {
+      dispatchToast('info', 'Notice', String(e.message || e))
+    }
     finally { setIsQueueLoading(false) }
   }
 
   const handlePauseQueue = async () => {
     setIsQueueLoading(true)
-    try { await pauseBatchAfterCurrent(); await loadData() } catch (e) { dispatchToast('info', 'Notice', String("Pause failed: " + e)) } 
+    try { await pauseBatchAfterCurrent(); await loadData() } catch (e) { dispatchToast('info', 'Notice', String("Pause failed: " + e)) }
     finally { setIsQueueLoading(false) }
   }
 
   const handleStopQueue = async () => {
     setIsQueueLoading(true)
-    try { await stopBatchQueue(); await loadData() } catch (e) { dispatchToast('info', 'Notice', String("Stop failed: " + e)) } 
+    try { await stopBatchQueue(); await loadData() } catch (e) { dispatchToast('info', 'Notice', String("Stop failed: " + e)) }
     finally { setIsQueueLoading(false) }
   }
 
   const handleRetryFailed = async () => {
     setIsQueueLoading(true)
-    try { await retryFailedBatchJobs(); await loadData() } catch (e) { dispatchToast('info', 'Notice', String("Retry failed: " + e)) } 
+    try { await retryFailedBatchJobs(); await loadData() } catch (e) { dispatchToast('info', 'Notice', String("Retry failed: " + e)) }
     finally { setIsQueueLoading(false) }
   }
 
@@ -238,18 +241,18 @@ export default function BatchVideoGeneratorPage() {
       {/* ── HEADER ── */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
-          <StudioPageHeader 
-            icon={<IconFilm size={18} />} 
-            title="Batch Video Generator" 
+          <StudioPageHeader
+            icon={<IconFilm size={18} />}
+            title="Batch Video Generator"
           />
           <p className="mt-2 text-sm max-w-xl" style={{ color: 'var(--text-muted)' }}>
-            Manage queued video exports and render them one by one automatically. 
+            Manage queued video exports and render them one by one automatically.
             Add jobs from the Image, Video, or Media Timelines.
           </p>
         </div>
         {batchState && (
           <div className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold shrink-0 shadow-sm transition-all"
-               style={{ 
+               style={{
                  background: batchState.is_running ? 'rgba(168, 85, 247, 0.1)' : 'var(--bg-input)',
                  color: batchState.is_running ? '#a855f7' : 'var(--text-primary)',
                  border: `1px solid ${batchState.is_running ? 'rgba(168, 85, 247, 0.3)' : 'var(--border-default)'}`
@@ -274,37 +277,38 @@ export default function BatchVideoGeneratorPage() {
         </div>
 
         {/* ── QUEUE CONTROLS ── */}
-        <div className="card p-4 flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
+        <div className="liquid-glass-card rounded-2xl p-4 flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
           <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
             {/* Primary Actions */}
-            <button 
+            <button
               onClick={handleStartQueue}
-              disabled={isQueueLoading || stats.queued === 0 || (batchState?.is_running && !batchState.stopping)} 
-              className={`btn-control btn-accent ${(!batchState?.is_running && stats.queued > 0) ? '' : 'opacity-50 cursor-not-allowed'}`}
+              disabled={isQueueLoading || stats.queued === 0 || (batchState?.is_running && !batchState.stopping) || (lockState.locked && lockState.source === 'direct')}
+              className={`btn-control btn-accent ${(!batchState?.is_running && stats.queued > 0 && !(lockState.locked && lockState.source === 'direct')) ? '' : 'opacity-50 cursor-not-allowed'}`}
+              title={(lockState.locked && lockState.source === 'direct') ? 'Another video is rendering in the Studio' : ''}
             >
-              <IconPlay size={16} /> Start Queue
+              <IconPlay size={16} /> {(lockState.locked && lockState.source === 'direct') ? 'Studio Busy' : 'Start Queue'}
             </button>
-            <button 
+            <button
               onClick={handlePauseQueue}
-              disabled={isQueueLoading || !batchState?.is_running || batchState.paused_after_current || batchState.stopping} 
+              disabled={isQueueLoading || !batchState?.is_running || batchState.paused_after_current || batchState.stopping}
               className={`btn-control ${batchState?.is_running && !batchState.paused_after_current && !batchState.stopping ? '' : 'opacity-50 cursor-not-allowed'}`}
             >
               <IconPause size={16} /> Pause Current
             </button>
-            <button 
+            <button
               onClick={handleStopQueue}
-              disabled={isQueueLoading || !batchState?.is_running || batchState.stopping} 
+              disabled={isQueueLoading || !batchState?.is_running || batchState.stopping}
               className={`btn-control ${batchState?.is_running && !batchState.stopping ? '' : 'opacity-50 cursor-not-allowed'}`}
             >
               <IconSquare size={16} /> Stop
             </button>
-            
+
             <div className="w-px h-6 mx-2" style={{ background: 'var(--border-subtle)' }} />
-            
+
             {/* Recovery */}
-            <button 
+            <button
               onClick={handleRetryFailed}
-              disabled={isQueueLoading || stats.failed === 0} 
+              disabled={isQueueLoading || stats.failed === 0}
               className={`btn-control ${stats.failed > 0 ? '' : 'opacity-50 cursor-not-allowed'}`}
             >
               <IconRefreshCw size={14} /> Retry Failed
@@ -313,21 +317,21 @@ export default function BatchVideoGeneratorPage() {
 
           {/* Cleanup Actions */}
           <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
-            <button 
+            <button
               onClick={handleClearCompleted}
               disabled={stats.completed === 0}
               className={`btn-destructive ${stats.completed > 0 ? '' : 'opacity-50 cursor-not-allowed'}`}
             >
                Clear Completed
             </button>
-            <button 
+            <button
               onClick={handleClearFailed}
               disabled={stats.failed === 0}
               className={`btn-destructive ${stats.failed > 0 ? '' : 'opacity-50 cursor-not-allowed'}`}
             >
                Clear Failed
             </button>
-            <button 
+            <button
               onClick={handleClearAll}
               disabled={jobs.length === 0}
               className={`btn-destructive ${jobs.length > 0 ? '' : 'opacity-50 cursor-not-allowed'}`}
@@ -339,7 +343,7 @@ export default function BatchVideoGeneratorPage() {
 
         {/* ── MAIN CONTENT ── */}
         <div className="flex-1 flex flex-col lg:flex-row gap-6 relative items-start">
-          
+
           <div className="flex-1 flex flex-col w-full">
             {/* ── FILTERS ── */}
             {jobs.length > 0 && (
@@ -348,9 +352,9 @@ export default function BatchVideoGeneratorPage() {
                   <div className="absolute left-3 top-1/2 -translate-y-1/2 opacity-50">
                     <IconSearch size={16} />
                   </div>
-                  <input 
-                    type="text" 
-                    placeholder="Search outputs..." 
+                  <input
+                    type="text"
+                    placeholder="Search outputs..."
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
                     className="form-input pl-10 w-full"
@@ -399,9 +403,9 @@ export default function BatchVideoGeneratorPage() {
                   <div className="text-center py-12 text-sm font-semibold opacity-50" style={{ color: 'var(--text-muted)' }}>No jobs match your current filters.</div>
                 )}
                 {filteredJobs.map(job => (
-                  <JobRow 
-                    key={job.id} 
-                    job={job} 
+                  <JobRow
+                    key={job.id}
+                    job={job}
                     isSelected={selectedJob?.id === job.id}
                     onSelect={() => setSelectedJob(job)}
                     onMoveUp={() => handleMoveUp(job.id)}
@@ -417,13 +421,13 @@ export default function BatchVideoGeneratorPage() {
 
           {/* ── INSPECTOR PANEL ── */}
           {selectedJob && (
-            <div className="w-full lg:w-[400px] shrink-0 sticky top-6 card overflow-hidden flex flex-col border border-indigo-500/20 shadow-2xl transition-all duration-300">
-              <div className="p-4 flex items-center justify-between border-b" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+            <div className="w-full lg:w-[400px] shrink-0 sticky top-6 liquid-glass-elevated rounded-2xl overflow-hidden flex flex-col border border-indigo-500/20 shadow-2xl transition-all duration-300">
+              <div className="p-4 flex items-center justify-between border-b" style={{ borderColor: 'var(--border-subtle)', background: 'rgba(0,0,0,0.2)' }}>
                 <div>
                   <h3 className="text-sm font-black tracking-wide" style={{ color: 'var(--text-primary)' }}>Inspector</h3>
                   <div className="text-[10px] uppercase font-bold mt-0.5" style={{ color: 'var(--text-muted)' }}>{selectedJob.id}</div>
                 </div>
-                <button 
+                <button
                   onClick={() => setSelectedJob(null)}
                   className="p-1.5 rounded-md hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
                   style={{ color: 'var(--text-primary)' }}
@@ -449,7 +453,7 @@ export default function BatchVideoGeneratorPage() {
                       {selectedJob.error}
                     </div>
                     {(selectedJob.status === 'failed' || selectedJob.status === 'cancelled') && (
-                      <button 
+                      <button
                         onClick={() => handleRetrySingle(selectedJob.id)}
                         className="mt-3 w-full py-2 rounded-lg text-xs font-bold text-white shadow-sm hover:opacity-90 transition-opacity"
                         style={{ background: 'var(--color-accent)' }}
@@ -480,23 +484,23 @@ export default function BatchVideoGeneratorPage() {
       </div>
 
       {/* ── CONFIRMATION MODAL ── */}
-      {confirmAction && (
+      {confirmAction && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-          <div className="card w-full max-w-sm p-6 shadow-2xl flex flex-col items-center text-center">
+          <div className="card w-full max-w-sm p-6 shadow-2xl flex flex-col items-center text-center bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
             <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4" style={{ background: 'var(--color-error-bg)', color: 'var(--color-error)' }}>
-              <IconTrash size={24} />
+              <IconAlertCircle size={24} />
             </div>
             <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--text-primary)' }}>{confirmAction.title}</h3>
             <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>{confirmAction.msg}</p>
             <div className="flex items-center gap-3 w-full">
-              <button 
+              <button
                 onClick={() => setConfirmAction(null)}
                 className="flex-1 py-2 rounded-xl text-sm font-bold bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
                 style={{ color: 'var(--text-primary)' }}
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={() => { confirmAction.action(); setConfirmAction(null) }}
                 className="flex-1 py-2 rounded-xl text-sm font-bold text-white transition-all shadow hover:opacity-90 hover:-translate-y-0.5"
                 style={{ background: 'var(--color-error)' }}
@@ -505,7 +509,8 @@ export default function BatchVideoGeneratorPage() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Access Limit Modal ── */}
@@ -600,8 +605,8 @@ function JobRow({ job, isSelected, onSelect, onMoveUp, onMoveDown, onDuplicate, 
   const isFailed = job.status === 'failed' || job.status === 'cancelled'
 
   return (
-    <div 
-      className={`job-row card p-4 flex flex-col md:flex-row md:items-center gap-4 cursor-pointer ${isSelected ? 'selected' : ''} ${isRunning ? 'running-row' : ''}`}
+    <div
+      className={`job-row liquid-glass-card rounded-2xl p-4 flex flex-col md:flex-row md:items-center gap-4 cursor-pointer ${isSelected ? 'selected ring-1 ring-indigo-500/50' : ''} ${isRunning ? 'running-row' : ''}`}
       onClick={onSelect}
     >
       <div className="flex-1 min-w-0">
@@ -615,7 +620,7 @@ function JobRow({ job, isSelected, onSelect, onMoveUp, onMoveDown, onDuplicate, 
           {job.config?.text_overlay_enabled === true && (
             <span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ background: 'var(--bg-elevated)', color: 'var(--color-accent)', border: '1px solid var(--border-subtle)' }}>
               Text Overlay · {
-                job.config.text_overlay_mode === 'timed_text' ? 'Timed Text' : 
+                job.config.text_overlay_mode === 'timed_text' ? 'Timed Text' :
                 job.config.text_overlay_mode === 'csv_text' ? 'CSV Text' : 'Whole Video'
               }
             </span>
@@ -630,7 +635,7 @@ function JobRow({ job, isSelected, onSelect, onMoveUp, onMoveDown, onDuplicate, 
           <span>•</span>
           <span>{new Date(job.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
         </div>
-        
+
         {/* Active Progress */}
         {isRunning && (
           <div className="mt-3 w-full max-w-sm">
@@ -645,7 +650,7 @@ function JobRow({ job, isSelected, onSelect, onMoveUp, onMoveDown, onDuplicate, 
             </div>
           </div>
         )}
-        
+
         {/* Error Detail */}
         {isFailed && (
           <div className="mt-2 text-xs font-medium text-red-500 truncate max-w-xl">
@@ -653,7 +658,7 @@ function JobRow({ job, isSelected, onSelect, onMoveUp, onMoveDown, onDuplicate, 
           </div>
         )}
       </div>
-      
+
       {/* Actions */}
       <div className="shrink-0 flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
         {isQueued && (
@@ -681,8 +686,8 @@ function JobRow({ job, isSelected, onSelect, onMoveUp, onMoveDown, onDuplicate, 
             <IconCopy size={16} />
           </button>
         )}
-        
-        <button 
+
+        <button
           onClick={onDelete}
           disabled={isRunning}
           className={`p-2 rounded-lg transition-colors ml-1 ${isRunning ? 'opacity-30 cursor-not-allowed' : 'hover:bg-red-500/10'}`}

@@ -20,6 +20,8 @@ import ProgressOverlay from './ProgressOverlay'
 import PreflightCheck, { buildPreflightChecks } from './PreflightCheck'
 import ExportPresetPanel from './ExportPresetPanel'
 import { TextOverlayPanel } from './TextOverlayPanel'
+import { CaptionSettingsSection } from './CaptionSettingsSection'
+import { CaptionConfig, DEFAULT_CAPTION_CONFIG } from '../types/caption'
 import type {
   VideoTimelineSettings,
   AspectRatio,
@@ -43,7 +45,10 @@ import { consumePendingTemplate, saveTemplate } from '../utils/templateStore'
 import { usePlan } from '../hooks/usePlan'
 import { useCredits } from '../hooks/useCredits'
 import { AccessLimitModal } from './billing/AccessLimitModal'
-import { estimateCredits, reserveCredits, finalizeJob } from '../lib/credits'
+import { estimateCredits, reserveCredits, finalizeJob, classifyReservationError } from '../lib/credits'
+import type { ToolAccessResult } from '../lib/plans'
+import { useRenderLock } from '../hooks/useRenderLock'
+import { useCreditEstimate } from '../hooks/useCreditEstimate'
 import { canUseTool, Plan } from '../lib/plans'
 import { parseTimelineCsv } from '../utils/timelineTimeParser'
 
@@ -131,7 +136,7 @@ function VideoDropZone({
 }) {
   const [drag, setDrag] = useState(false)
   const inputRef = React.useRef<HTMLInputElement>(null)
-  
+
   const handleFiles = (droppedFiles: FileList | File[]) => {
     const list = Array.from(droppedFiles)
     if (list.length === 0) {
@@ -216,7 +221,9 @@ function VideoDropZone({
 function VideoTimelineResult({
   result, rowCount, settings,
 }: { result: GenerateResponse; rowCount: number; settings: VideoTimelineSettings }) {
-  const videoUrl = result.success && result.output_video_url ? `${resolveBackendUrl(result.output_video_url)}?t=${Date.now()}` : ""
+  const videoUrl = React.useMemo(() => {
+    return result.success && result.output_video_url ? `${resolveBackendUrl(result.output_video_url)}?t=${Date.now()}` : ""
+  }, [result])
   const hasVideo = result.success && !!videoUrl
   const filename = result.output_filename ?? 'video_timeline.mp4'
 
@@ -357,6 +364,7 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
   const { requireAuth, user } = useAuth()
   const { plan } = usePlan()
   const { remaining } = useCredits()
+  const { lockState } = useRenderLock()
   const [limitModalOpen, setLimitModalOpen] = useState(false)
   const [limitModalReason, setLimitModalReason] = useState('')
   const [limitModalRequiredPlan, setLimitModalRequiredPlan] = useState<string | undefined>(undefined)
@@ -366,7 +374,8 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
   const [audioZip,  setAudioZip]  = useState<File | null>(null)
   const [videosZip, setVideosZip] = useState<File | null>(null)
   const [csvFile,   setCsvFile]   = useState<File | null>(null)
-  
+  const [captionConfig, setCaptionConfig] = useState<CaptionConfig>(DEFAULT_CAPTION_CONFIG)
+
   const handleCsvUpload = async (file: File | null) => {
     if (!file) {
       setCsvFile(null);
@@ -380,11 +389,11 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
         setCsvFile(null);
         return;
       }
-      
+
       if (result.warnings && result.warnings.length > 0) {
         alert("Warnings:\n" + result.warnings.join("\n"));
       }
-      
+
       const blob = new Blob([result.normalizedCsv], { type: 'text/csv' });
       const newFile = new File([blob], file.name, { type: 'text/csv' });
       setCsvFile(newFile);
@@ -404,8 +413,8 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
       ...DEFAULT_SETTINGS,
       outputName: s.defaultVideoFilename,
       exportResolution: s.defaultExportPreset.includes('4k') ? '4K' : '1080p',
-      aspectRatio: s.defaultExportPreset.includes('tiktok') ? '9:16' : 
-                   s.defaultExportPreset.includes('youtube') ? '16:9' : 
+      aspectRatio: s.defaultExportPreset.includes('tiktok') ? '9:16' :
+                   s.defaultExportPreset.includes('youtube') ? '16:9' :
                    s.defaultExportPreset === 'instagram_reel' ? '9:16' :
                    s.defaultExportPreset === 'square_post' ? '1:1' : '9:16',
     }
@@ -417,6 +426,11 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
     const pending = consumePendingTemplate('video')
     if (pending) {
       setSettings(s => ({ ...s, ...pending }))
+      if (pending.captionConfig) {
+        const cc = { ...pending.captionConfig };
+        delete cc.srtFile;
+        setCaptionConfig(cc);
+      }
     }
   }, [])
 
@@ -466,16 +480,16 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
         if (!text) return
         const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
         if (lines.length < 2) return
-        
+
         const header = lines[0].toLowerCase().split(',')
         const startIdx = header.indexOf('start')
         const endIdx = header.indexOf('end')
-        
+
         if (startIdx === -1 || endIdx === -1) return
-        
+
         let minStart = Infinity
         let maxEnd = -Infinity
-        
+
         for (let i = 1; i < lines.length; i++) {
           const parts = lines[i].split(',')
           const s = parseFloat(parts[startIdx])
@@ -534,6 +548,13 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
     URL.revokeObjectURL(url)
   }
 
+  const durationSeconds = Math.max(1, Math.ceil(Number(visualDur || audioDur) || 60))
+  const { estimatedCredits: liveCreditEstimate, isEstimating: isEstimatingCredits } = useCreditEstimate('video_timeline', {
+    duration_seconds: durationSeconds,
+    resolution: settings.exportResolution || "1080p",
+    is_premium_template: false
+  })
+
   // Generate
   const computeActiveSettings = (s: VideoTimelineSettings) => {
     const isActive = s.textOverlayMode === 'whole_video' ? (s.textOverlayText || '').trim().length > 0
@@ -545,9 +566,9 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
   const handleGenerate = async () => {
     if (!requireAuth()) return
     if ((audioInputMode === 'single' ? !audioFile : !audioZip) || !videosZip || !csvFile) return
-    
+
     const durationSeconds = Math.max(1, Math.ceil(Number(visualDur || audioDur) || 60))
-    
+
     const estimatedCredits = await estimateCredits('video_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution || "1080p" })
     const access = canUseTool(plan, remaining, 'video_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution }, estimatedCredits)
     if (!access.allowed) {
@@ -564,14 +585,21 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
         await reserveCredits('video_timeline', durationSeconds, estimatedCredits, cjid, { resolution: settings.exportResolution, duration_seconds: durationSeconds })
       } catch (err: any) {
         setActiveClientJobId(null)
-        setLimitModalReason(err.message || 'Internet connection is required to verify credits before starting this export.')
-        setLimitModalOpen(true)
+        const classified = classifyReservationError(err)
+        if (classified.type === 'pricing_mismatch' || classified.type === 'unknown') {
+          alert(`Error: ${classified.message}`)
+        } else {
+          setLimitModalReason(classified.message)
+          setLimitModalRequiredPlan(undefined)
+          setLimitModalOpen(true)
+        }
         return
       }
     }
     setResult(null); setCancelledMsg(null); setStatus('uploading')
     try {
-      const activeSettings = computeActiveSettings(settings);
+      const activeSettings: any = computeActiveSettings(settings);
+      activeSettings.captionConfig = captionConfig;
       const { job_id } = await startVideoTimelineJob(
         audioInputMode, audioFile, audioZip, videosZip, csvFile, activeSettings,
         introFile, outroFile, estimatedCredits
@@ -599,20 +627,45 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
 
     try {
       const activeSettings: any = computeActiveSettings(settings);
-      
+      activeSettings.captionConfig = captionConfig;
+
       const durationSeconds = Math.max(1, Math.ceil(Number(visualDur || audioDur) || 60))
+
+      let totalCost = 0;
+      let numVideos = 1;
+      try {
+        const text = await csvFile.text();
+        const parsed = parseTimelineCsv(text, 'video');
+        if (parsed.success && parsed.rows.length > 0) {
+          numVideos = parsed.rows.length;
+          for (const row of parsed.rows) {
+            const rowDur = Math.max(1, Math.ceil(row.end - row.start));
+            totalCost += await estimateCredits('video_timeline', { duration_seconds: rowDur, resolution: settings.exportResolution || "1080p" });
+          }
+        } else {
+          totalCost = await estimateCredits('video_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution || "1080p" });
+        }
+      } catch (err) {
+        totalCost = await estimateCredits('video_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution || "1080p" });
+      }
+
       cjid = crypto.randomUUID()
-      const estimatedCredits = await estimateCredits('video_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution || "1080p" })
-      
+      const estimatedCredits = totalCost
+
       if (user) {
         try {
           await reserveCredits('video_timeline', durationSeconds, estimatedCredits, cjid, {
-             is_batch: true, resolution: settings.exportResolution, duration_seconds: durationSeconds 
+             is_batch: true, resolution: settings.exportResolution, duration_seconds: durationSeconds
           })
           reserved = true
         } catch (err: any) {
-          setLimitModalReason(err.message || 'Internet connection is required to verify credits before starting this export.')
-          setLimitModalOpen(true)
+          const classified = classifyReservationError(err)
+          if (classified.type === 'pricing_mismatch' || classified.type === 'unknown') {
+            alert(`Error: ${classified.message}`)
+          } else {
+            setLimitModalReason(classified.message)
+            setLimitModalOpen(true)
+          }
           setIsAddingToQueue(false)
           return
         }
@@ -627,10 +680,10 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
         audioInputMode, audioFile, audioZip, videosZip, csvFile, activeSettings,
         introFile, outroFile,
       )
-      
-      // Do NOT call finalizeJob(cjid, 'success') immediately. 
+
+      // Do NOT call finalizeJob(cjid, 'success') immediately.
       // It is now attached to activeSettings.cjid and will be finalized by BatchVideoGeneratorPage
-      
+
       setSuccessQueueMsg("Added to Batch Queue")
       setTimeout(() => setSuccessQueueMsg(null), 4000)
     } catch (err: any) {
@@ -722,7 +775,7 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
           <div className="flex-1 min-w-0 space-y-6">
 
             {/* Uploads */}
-            <div className="card p-5 space-y-4">
+            <div className="liquid-glass-card rounded-2xl p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Video Source Files</h2>
@@ -776,7 +829,7 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
             </div>
 
             {/* Export Preset card */}
-            <div className="card p-5">
+            <div className="liquid-glass-card rounded-2xl p-5 relative z-10">
               <ExportPresetPanel
                 idPrefix="vt"
                 disabled={isLoading}
@@ -800,13 +853,13 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
             </div>
 
             {/* Basic Settings */}
-            <div className="card p-5 space-y-4">
+            <div className="liquid-glass-card rounded-2xl p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Video Settings</h2>
                   <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>Configure core dimensions and playback behaviors.</p>
                 </div>
-                <button 
+                <button
                   onClick={() => {
                     if (!requireAuth()) return
                     const name = window.prompt('Enter template name:', 'My Video Template')
@@ -814,7 +867,7 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
                       saveTemplate({ name, tool: 'video', description: 'Saved from Video Timeline', settings })
                       alert('Template saved to your templates library!')
                     }
-                  }} 
+                  }}
                   className="text-[10px] font-bold px-2 py-1 bg-[var(--bg-input)] hover:bg-[var(--accent-primary)] hover:text-white rounded border border-[var(--border-subtle)] transition-colors"
                 >
                   Save as Template
@@ -855,7 +908,7 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
             </div>
 
             {/* ── Motion Style ── */}
-            <div className="card p-5 space-y-4">
+            <div className="liquid-glass-card rounded-2xl p-5 space-y-4">
               <div>
                 <h2 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Motion Style</h2>
                 <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>Apply motion to your media.</p>
@@ -889,12 +942,12 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
             </div>
 
             {/* ── Background Music ── */}
-            <div className="card p-5 space-y-4">
+            <div className="liquid-glass-card rounded-2xl p-5 space-y-4">
               <div>
                 <h2 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Background Music</h2>
                 <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>Optional music track mixed under the main voice audio.</p>
               </div>
-              
+
               <VideoDropZone
                 id="vt-bg-music-upload"
                 label="Upload Music"
@@ -937,7 +990,7 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
             </div>
 
             {/* Advanced Enhancements */}
-            <div className="card p-5 space-y-4">
+            <div className="liquid-glass-card rounded-2xl p-5 space-y-4">
               <div>
                 <h2 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Enhancements</h2>
                 <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>Transitions and visual styles.</p>
@@ -978,7 +1031,14 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
             </div>
 
             {/* Text Overlay */}
-            <TextOverlayPanel 
+            <CaptionSettingsSection
+            config={captionConfig}
+            onChange={setCaptionConfig}
+            disabled={isLoading}
+          />
+
+          <TextOverlayPanel
+
               settings={settings}
               onChange={(updates) => setSettings(s => ({ ...s, ...updates }))}
             />
@@ -1002,7 +1062,7 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
           <div className="xl:w-[320px] shrink-0 space-y-6">
 
             {/* Action / Generate Card */}
-            <div className="card p-5 space-y-4">
+            <div className="liquid-glass-card rounded-2xl p-5 space-y-4">
               <h2 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Action</h2>
 
               <PreflightCheck
@@ -1027,27 +1087,31 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
               )}
 
               <button
-                id="vt-generate-btn"
                 onClick={handleGenerate}
-                disabled={!canGenerate || isAddingToQueue}
-                aria-label="Generate video timeline"
+                disabled={!canGenerate || lockState.locked}
                 className={`w-full relative overflow-hidden transition-all duration-300 flex items-center justify-center gap-2 rounded-xl text-sm font-bold active:scale-[0.98] ${
-                  canGenerate && !isAddingToQueue
+                  (canGenerate && !isAddingToQueue && !lockState.locked)
                     ? 'active:brightness-95'
                     : 'opacity-50 cursor-not-allowed'
                 }`}
                 style={{
                   height: 52,
-                  background: canGenerate && !isAddingToQueue ? 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)' : 'var(--bg-elevated)',
-                  boxShadow: canGenerate && !isAddingToQueue ? '0 4px 16px rgba(99,102,241,0.35)' : 'none',
-                  color: canGenerate && !isAddingToQueue ? '#fff' : 'var(--text-muted)',
-                  border: canGenerate && !isAddingToQueue ? 'none' : '1px solid var(--border-default)'
+                  background: (canGenerate && !isAddingToQueue && !lockState.locked) ? 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)' : 'var(--bg-elevated)',
+                  boxShadow: (canGenerate && !isAddingToQueue && !lockState.locked) ? '0 4px 16px rgba(99,102,241,0.35)' : 'none',
+                  color: (canGenerate && !isAddingToQueue && !lockState.locked) ? '#fff' : 'var(--text-muted)',
+                  border: (canGenerate && !isAddingToQueue && !lockState.locked) ? 'none' : '1px solid var(--border-default)'
                 }}
-                onMouseEnter={e => { if (canGenerate && !isAddingToQueue) (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 10px 28px rgba(99,102,241,0.55)' }}
-                onMouseLeave={e => { if (canGenerate && !isAddingToQueue) (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 16px rgba(99,102,241,0.35)' }}
+                onMouseEnter={e => { if (canGenerate && !isAddingToQueue && !lockState.locked) (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 10px 28px rgba(99,102,241,0.55)' }}
+                onMouseLeave={e => { if (canGenerate && !isAddingToQueue && !lockState.locked) (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 16px rgba(99,102,241,0.35)' }}
               >
-                {isLoading ? <><IconLoader size={18} className="animate-spin" />Generating…</> : canGenerate ? <><IconZap size={18} />Generate Video</> : <>Select Required Files</>}
+                {lockState.locked ? <>Another video is rendering</> : isLoading ? <><IconLoader size={18} className="animate-spin" />Generating…</> : canGenerate ? <><IconZap size={18} />Generate Video</> : <>Select Required Files</>}
               </button>
+
+              {canGenerate && !lockState.locked && liveCreditEstimate !== null && (
+                <div className="text-center text-xs text-[var(--text-muted)] font-medium mt-1">
+                   {isEstimatingCredits ? 'Estimating cost...' : `Estimated cost: ${liveCreditEstimate} credits`}
+                </div>
+              )}
 
               <button
                 onClick={handleAddJob}
@@ -1076,7 +1140,7 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
             </div>
 
             {/* CSV Guide */}
-            <div className="card p-5 space-y-4">
+            <div className="liquid-glass-card rounded-2xl p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>CSV Format Guide</h2>
@@ -1114,7 +1178,7 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
                 </ul>
               </div>
             </div>
-              
+
               <div className="pt-2">
                 <pre className="text-[10px] leading-relaxed font-mono rounded-lg p-3" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}>
 {`start,end,video
@@ -1149,7 +1213,7 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
           </div>
 
         </div>
-      
+
       {/* Access Limit Modal */}
       <AccessLimitModal
         isOpen={limitModalOpen}

@@ -17,8 +17,8 @@ export default function StudioPageHeader({ icon, title, subtitle, actions }: Pro
       <div className="flex items-center gap-3 min-w-0">
         {icon && (
           <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-            style={{ background: 'var(--accent-subtle)', color: 'var(--accent-primary)', border: '1px solid var(--accent-border)' }}
+            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 liquid-glass-pill"
+            style={{ color: 'var(--accent-primary)' }}
           >
             {icon}
           </div>

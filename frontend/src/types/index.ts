@@ -105,6 +105,7 @@ export interface GenerateSettings {
   textOverlayBackgroundEnabled: boolean
   textOverlayBackgroundColor: string
   textOverlayBackgroundOpacity: number
+  captionConfig?: import('./caption').CaptionConfig;
 }
 
 export interface TimelineRow {
@@ -202,6 +203,7 @@ export interface VideoTimelineSettings {
   textOverlayBackgroundEnabled: boolean
   textOverlayBackgroundColor: string
   textOverlayBackgroundOpacity: number
+  captionConfig?: import('./caption').CaptionConfig;
 }
 
 // ── Batch 11C — Media Timeline Text Styling ────────────────────────────────
@@ -268,6 +270,7 @@ export interface MediaTimelineSettings {
   textOverlayBackgroundEnabled: boolean
   textOverlayBackgroundColor: string
   textOverlayBackgroundOpacity: number
+  captionConfig?: import('./caption').CaptionConfig;
 }
 
 // ── Batch Queue ──────────────────────────────────────────────────────────────

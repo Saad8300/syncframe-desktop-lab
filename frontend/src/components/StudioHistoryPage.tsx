@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import {
   IconHistory,
   IconTrash,
@@ -111,7 +112,7 @@ function StatCard({ title, value, icon, color }: { title: string, value: string 
   )
 }
 
-export default function StudioHistoryPage() {
+export default function StudioHistoryPage({ onNavigate }: { onNavigate?: (view: string) => void }) {
   const [history, setHistory]           = useState<any[]>([])
   const [loading, setLoading]           = useState(true)
   
@@ -449,8 +450,8 @@ export default function StudioHistoryPage() {
               Your generated videos, merged audio files, and timestamp exports will appear here after you create them.
             </p>
             <div className="flex items-center justify-center gap-3 flex-wrap">
-              <a href="/video" className="btn-primary text-xs px-4 py-2 rounded-lg" style={{ background: 'var(--accent-primary)', color: 'white', fontWeight: 700 }}>Open Video Timeline</a>
-              <a href="/batch" className="btn-secondary text-xs px-4 py-2 rounded-lg" style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-default)', fontWeight: 700 }}>Open Batch Generator</a>
+              <button type="button" onClick={() => onNavigate?.('tool:video')} className="btn-primary text-xs px-4 py-2 rounded-lg" style={{ background: 'var(--accent-primary)', color: 'white', fontWeight: 700 }}>Open Video Timeline</button>
+              <button type="button" onClick={() => onNavigate?.('batch_video')} className="btn-secondary text-xs px-4 py-2 rounded-lg" style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-default)', fontWeight: 700 }}>Open Batch Generator</button>
             </div>
           </div>
         ) : filtered.length === 0 ? (
@@ -643,7 +644,7 @@ export default function StudioHistoryPage() {
       {/* ── Details Modal ── */}
       {detailsItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in" onClick={() => setDetailsItem(null)}>
-          <div className="card w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-modal-in" onClick={e => e.stopPropagation()}>
+          <div className="liquid-glass-elevated rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-modal-in" onClick={e => e.stopPropagation()}>
             <div className="p-5 flex items-center justify-between border-b bg-black/5 dark:bg-white/5" style={{ borderColor: 'var(--border-subtle)' }}>
               <div>
                 <h3 className="font-bold text-lg" style={{ color: 'var(--text-primary)' }}>Asset Details</h3>
@@ -708,9 +709,9 @@ export default function StudioHistoryPage() {
       )}
 
       {/* ── Confirmation Modal ── */}
-      {confirmAction && (
+      {confirmAction && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-          <div className="card w-full max-w-sm p-6 shadow-2xl flex flex-col items-center text-center animate-modal-in">
+          <div className="liquid-glass-elevated rounded-2xl w-full max-w-sm p-6 shadow-2xl flex flex-col items-center text-center animate-modal-in">
             <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4" style={{ background: 'var(--color-error-bg)', color: 'var(--color-error)' }}>
               <IconAlertCircle size={24} />
             </div>
@@ -733,7 +734,8 @@ export default function StudioHistoryPage() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>

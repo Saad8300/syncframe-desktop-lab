@@ -32,11 +32,7 @@ export function AccessLimitModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in" style={{ WebkitAppRegion: 'no-drag' } as any}>
       <div 
-        className="relative w-full max-w-md p-6 rounded-2xl shadow-2xl animate-slide-up"
-        style={{
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border-default)',
-        }}
+        className="relative w-full max-w-md p-6 rounded-2xl animate-slide-up liquid-glass-elevated"
       >
         <button
           onClick={onClose}
@@ -72,15 +68,17 @@ export function AccessLimitModal({
                 <p className="text-[10px] uppercase font-bold tracking-wider" style={{ color: 'var(--text-muted)' }}>Your Plan</p>
                 <p className="text-sm font-semibold mt-0.5 text-white">{currentPlan || 'Free Trial'}</p>
               </div>
-              <div className="text-right">
-                <p className="text-[10px] uppercase font-bold tracking-wider" style={{ color: 'var(--text-muted)' }}>Required</p>
-                <p className="text-sm font-semibold mt-0.5" style={{ color: 'var(--accent-primary)' }}>{requiredPlan === 'Ultra' ? 'Agency' : requiredPlan === 'Standard' ? 'Starter' : (requiredPlan || 'Pro')}</p>
-              </div>
+              {!(currentPlan === 'Agency' && !requiredPlan) && (
+                <div className="text-right">
+                  <p className="text-[10px] uppercase font-bold tracking-wider" style={{ color: 'var(--text-muted)' }}>Required</p>
+                  <p className="text-sm font-semibold mt-0.5" style={{ color: 'var(--accent-primary)' }}>{requiredPlan === 'Ultra' ? 'Agency' : requiredPlan === 'Standard' ? 'Starter' : (requiredPlan || 'Pro')}</p>
+                </div>
+              )}
             </div>
           )}
 
           <div className="w-full flex flex-col gap-3">
-            {!isLoginRequired && (
+            {!isLoginRequired && currentPlan !== 'Agency' && (
               <a
                 href={WEBSITE_URLS.PRICING}
                 target="_blank"

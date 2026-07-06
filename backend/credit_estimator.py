@@ -33,27 +33,27 @@ def estimate_credits(req: EstimateRequest):
     if req.tool == "script_timestamp":
         cost_per_min = CREDIT_COSTS["script_timestamp"]["per_minute"]
         minimum = CREDIT_COSTS["script_timestamp"]["minimum"]
-        base_cost = math.ceil(cost_per_min * duration_mins)
+        base_cost = math.ceil(duration_mins) * cost_per_min
         base_cost = max(base_cost, minimum)
         label = "Script Timestamp Generation"
     
     elif req.tool == "audio_merger":
         cost_per_min = CREDIT_COSTS["audio_merger"]["per_minute"]
         minimum = CREDIT_COSTS["audio_merger"]["minimum"]
-        base_cost = math.ceil(cost_per_min * duration_mins)
+        base_cost = math.ceil(req.duration_seconds / 300.0) * 1
         base_cost = max(base_cost, minimum)
         label = "Audio Merge"
         
-    elif req.tool in ["video_export", "batch_video"]:
+    elif req.tool in ["video_export", "batch_video", "video_timeline", "media_timeline"]:
         res = req.resolution if req.resolution in CREDIT_COSTS["video_export"] else "1080p"
         cost_per_min = CREDIT_COSTS["video_export"][res]["per_minute"]
         minimum = CREDIT_COSTS["video_export"][res]["minimum"]
-        base_cost = math.ceil(cost_per_min * duration_mins)
+        base_cost = math.ceil(duration_mins) * cost_per_min
         base_cost = max(base_cost, minimum)
         label = f"{res} Video Export"
     else:
         # Default fallback
-        base_cost = math.ceil(5 * duration_mins)
+        base_cost = math.ceil(duration_mins) * 5
         base_cost = max(base_cost, 5)
         label = "Unknown Tool Generation"
 

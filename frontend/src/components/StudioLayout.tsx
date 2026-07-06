@@ -93,7 +93,7 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
     <div className="min-h-screen flex flex-col md:flex-row" style={{ background: 'var(--bg-app)', color: 'var(--text-primary)' }}>
 
       {/* ── Mobile Header ── */}
-      <div className="md:hidden flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+      <div className="md:hidden flex items-center justify-between px-4 py-3 liquid-glass-header sticky top-0 z-[60]">
         <span className="font-bold text-gradient text-base">SyncFrame Studio</span>
         <div className="flex items-center gap-2">
           <button onClick={toggleTheme} className="p-1.5 rounded-lg transition-colors hover:bg-black/10 dark:hover:bg-white/10" style={{ color: 'var(--text-secondary)' }} title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}>
@@ -115,12 +115,11 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
         className={`
           flex flex-col shrink-0 border-r md:sticky md:top-0 md:h-screen
           ${sidebarW}
-          transition-all duration-200
+          transition-all duration-200 liquid-glass-card border-none
           ${mobileMenuOpen
             ? 'fixed inset-y-0 left-0 z-50 shadow-2xl w-56 flex'
             : 'hidden md:flex'}
         `}
-        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}
       >
         {/* Brand header */}
         <div className={`flex items-center gap-2 px-4 py-4 border-b ${collapsed ? 'justify-center' : ''}`} style={{ borderColor: 'var(--border-subtle)' }}>
@@ -271,13 +270,7 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
               <>
                 <div className="fixed inset-0 z-[60]" onClick={() => setProfileDropdownOpen(false)} />
                 <div 
-                  className="absolute bottom-[110%] left-2 right-2 md:left-4 md:right-auto md:w-64 rounded-2xl z-[70] shadow-2xl animate-modal-in origin-bottom-left"
-                  style={{ 
-                    background: 'var(--bg-card)', 
-                    border: '1px solid var(--border-default)',
-                    backdropFilter: 'blur(20px)',
-                    WebkitBackdropFilter: 'blur(20px)'
-                  }}
+                  className="absolute bottom-[110%] left-2 right-2 md:left-4 md:right-auto md:w-64 rounded-2xl z-[70] animate-modal-in origin-bottom-left liquid-glass-elevated"
                 >
                   <div className="p-4 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
                     <div className="flex items-center gap-3 mb-3">

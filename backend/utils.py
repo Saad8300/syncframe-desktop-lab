@@ -365,3 +365,43 @@ def preprocess_image(
     img = apply_visual_style(img, visual_effect, effect_strength)
 
     img.save(output_path, "JPEG", quality=95)
+
+# ---------------------------------------------------------------------------
+# Profiling
+# ---------------------------------------------------------------------------
+
+import time
+
+class Profiler:
+    def __init__(self):
+        self.stages = []
+        self.current_stage = None
+        self.current_start = 0.0
+        self.start_time = time.time()
+
+    def start_stage(self, name: str):
+        if self.current_stage:
+            self.end_stage()
+        self.current_stage = name
+        self.current_start = time.time()
+
+    def end_stage(self):
+        if self.current_stage:
+            elapsed = time.time() - self.current_start
+            self.stages.append((self.current_stage, elapsed))
+            self.current_stage = None
+
+    def get_report(self) -> str:
+        self.end_stage()
+        lines = ["=== Performance Profile ==="]
+        total = 0.0
+        slowest_stage = ("None", 0.0)
+        for stage, elapsed in self.stages:
+            lines.append(f"{stage}: {seconds_to_mmss(elapsed)} ({elapsed:.2f}s)")
+            total += elapsed
+            if elapsed > slowest_stage[1]:
+                slowest_stage = (stage, elapsed)
+        lines.append(f"Total time: {seconds_to_mmss(total)} ({total:.2f}s)")
+        lines.append(f"Slowest stage: {slowest_stage[0]} ({seconds_to_mmss(slowest_stage[1])})")
+        lines.append("===========================")
+        return "\n".join(lines)

@@ -152,7 +152,7 @@ export function canUseTool(
         requiredCredits: 0,
         upgradeRequired: true,
         planLimitExceeded: true,
-        requiredPlan: reqRes >= 2160 ? 'Agency' : (reqRes >= 1080 ? 'Starter' : 'Pro'),
+        requiredPlan: reqRes >= 2160 ? 'Agency' : (reqRes >= 1440 ? 'Pro' : 'Starter'),
         limitType: 'resolution',
         suggestedFix: 'Select a lower resolution or upgrade your plan'
       }
