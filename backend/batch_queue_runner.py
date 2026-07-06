@@ -22,6 +22,9 @@ from audio_helpers import prepare_single_audio, prepare_zip_audio
 
 logger = logging.getLogger(__name__)
 
+# Global cache for batch transcription reusing
+transcription_cache: Dict[str, str] = {}
+
 def _get_batch_media_duration(filepath: str):
     import subprocess
     try:
@@ -98,8 +101,19 @@ def _runner_loop():
                     runner_state.current_job_id = None
                 break
                 
+            from render_lock import acquire_render_lock, release_render_lock, get_render_lock_status
+            
+            lock_status = get_render_lock_status()
+            if lock_status["locked"] and lock_status["source"] == "direct":
+                time.sleep(2)
+                continue
+                
             job = queued_jobs[0]
             job_id = job["id"]
+            
+            if not acquire_render_lock("batch", "batch_video_generator", job_id):
+                time.sleep(2)
+                continue
             
             with runner_state.lock:
                 runner_state.current_job_id = job_id
@@ -113,6 +127,7 @@ def _runner_loop():
                 logger.error(f"Job {job_id} crashed: {e}")
                 batch_queue_store.update_job(job_id, {"status": "failed", "message": f"Runner error: {str(e)}"})
             finally:
+                release_render_lock(job_id)
                 with runner_state.lock:
                     runner_state.current_job_id = None
                     
@@ -154,7 +169,7 @@ def _process_job(job: Dict[str, Any]):
     timestamp_csv_name = assets.get("timestamp_csv")
     intro_file_name = assets.get("intro_file")
     outro_file_name = assets.get("outro_file")
-    bg_music_file_name = assets.get("bg_music_file")
+    bg_music_file_name = assets.get("bg_music_file") or assets.get("background_music_file")
     
     if not timestamp_csv_name:
         batch_queue_store.update_job(job_id, {"status": "failed", "message": "Missing required timestamp CSV in job."})
@@ -188,7 +203,10 @@ def _process_job(job: Dict[str, Any]):
             batch_queue_store.update_job(job_id, {"status": "failed", "message": f"Audio processing failed: {str(e)}"})
             return
             
+
+        
         if source_tool == "image_timeline":
+
             zip_path = str(job_dir / images_zip_name) if images_zip_name else None
         elif source_tool == "video_timeline":
             zip_path = str(job_dir / videos_zip_name) if videos_zip_name else None
@@ -201,8 +219,13 @@ def _process_job(job: Dict[str, Any]):
         outro_path = str(job_dir / outro_file_name) if outro_file_name else None
         bg_music_path = str(job_dir / bg_music_file_name) if bg_music_file_name else None
         
-        output_filename = make_clean_filename(job.get("output_name", "batch_output.mp4"), "video", ".mp4")
+        raw_output_name = job.get("output_name", "batch_output.mp4")
+        output_filename = make_clean_filename(raw_output_name, "video", ".mp4")
         
+        # Make the filename strictly unique per job to prevent overwrites
+        base_name, ext = os.path.splitext(output_filename)
+        job_id_short = job_id.split("_")[-1][:8] if "_" in job_id else job_id[:8]
+        output_filename = f"{base_name}_{job_id_short}{ext}"
         # Ensure outputs exists
         OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
         output_path = str(OUTPUTS_DIR / output_filename)
@@ -240,7 +263,51 @@ def _process_job(job: Dict[str, Any]):
         
         start_time = time.time()
         
+
+        # --- PREPARE CAPTIONS ASS WITH CACHE ---
+        caption_source = config.get("caption_source", "none")
+        caption_ass_path = None
+        if caption_source != "none":
+            from caption_engine import prepare_captions_ass
+            import json
+            from utils import get_resolution
+            
+            caption_config_json = config.get("caption_config_json", "{}")
+            try:
+                caption_config = json.loads(caption_config_json)
+            except:
+                caption_config = {}
+            caption_config["caption_source"] = caption_source
+            srt_file = config.get("srt_file", "")
+            if srt_file:
+                caption_config["srt_file"] = srt_file
+            
+            cache_key = f"{audio_path}_{caption_config_json}_{srt_file}"
+            
+            if cache_key in transcription_cache:
+                caption_ass_path = transcription_cache[cache_key]
+            else:
+                target_w, target_h = get_resolution(config.get("aspect_ratio", "9:16"), config.get("export_resolution", "1080p"))
+                def caption_prog(msg, pct):
+                    update_progress(5 + int(pct * 0.1), f"Captions: {msg}")
+                try:
+                    caption_ass_path = prepare_captions_ass(
+                        main_audio_path=audio_path,
+                        config=caption_config,
+                        width=target_w,
+                        height=target_h,
+                        progress_callback=caption_prog
+                    )
+                    transcription_cache[cache_key] = caption_ass_path
+                except Exception as e:
+                    import logging
+                    logging.getLogger("batch_queue_runner").error(f"Captions failed: {e}")
+                    batch_queue_store.update_job(job_id, {"message": f"Captions failed: {e}"})
+
+        # ---------------------------------------
+
         if source_tool == "image_timeline":
+
             res = generate_video(
                 audio_path=audio_path,
                 zip_path=zip_path,
@@ -267,7 +334,8 @@ def _process_job(job: Dict[str, Any]):
                 music_fade=config.get("music_fade", True),
                 cancel_event=runner_state.current_cancel_event,
                 progress_callback=update_progress,
-                text_overlay_config=text_overlay_config
+                text_overlay_config=text_overlay_config,
+                caption_ass_path=caption_ass_path
             )
         elif source_tool == "video_timeline":
             res = generate_video_timeline(
@@ -295,7 +363,8 @@ def _process_job(job: Dict[str, Any]):
                 outro_path=outro_path,
                 cancel_event=runner_state.current_cancel_event,
                 progress_callback=update_progress,
-                text_overlay_config=text_overlay_config
+                text_overlay_config=text_overlay_config,
+                caption_ass_path=caption_ass_path
             )
         else: # media_timeline
             res = generate_media_timeline(
@@ -329,7 +398,8 @@ def _process_job(job: Dict[str, Any]):
                 outro_path=outro_path,
                 cancel_event=runner_state.current_cancel_event,
                 progress_callback=update_progress,
-                text_overlay_config=text_overlay_config
+                text_overlay_config=text_overlay_config,
+                caption_ass_path=caption_ass_path
             )
         
         elapsed = time.time() - start_time
@@ -343,13 +413,19 @@ def _process_job(job: Dict[str, Any]):
             batch_queue_store.update_job(job_id, {"status": "failed", "message": f"Failed: {err_msg}"})
             return
             
+        
+        
+        
         file_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+
             
-        # Success! Save to history
+        # Success! Save to history — one record per timeline row (clip)
         try:
-            duration = _get_batch_media_duration(output_path)
-            if not duration:
-                duration = config.get("duration_seconds")
+            from timeline_time_parser import parse_timeline_csv
+
+            total_duration_seconds = _get_batch_media_duration(output_path)
+            if not total_duration_seconds:
+                total_duration_seconds = float(config.get("duration_seconds") or 0)
 
             tool_name = config.get("credit_tool_name", "batch_video_generator")
             labels = {
@@ -359,26 +435,93 @@ def _process_job(job: Dict[str, Any]):
                 "batch_video_generator": "Batch Video Generator"
             }
             tool_label = labels.get(tool_name, "Batch Video Generator")
+            total_credit_cost = config.get("credit_cost")
+            resolution = config.get("export_resolution", "1080p")
+            aspect_ratio = config.get("aspect_ratio", "9:16")
+            render_profile = config.get("render_profile", "balanced")
 
-            history_store.add_history(
-                tool=tool_name,
-                tool_label=tool_label,
-                output_name=output_filename,
-                output_type="video",
-                output_url=f"/outputs/{output_filename}",
-                file_extension="mp4",
-                duration_seconds=duration,
-                file_size_bytes=file_size,
-                resolution=config.get("export_resolution", "1080p"),
-                aspect_ratio=config.get("aspect_ratio", "9:16"),
-                render_profile=config.get("render_profile", "balanced"),
-                metadata={
-                    "batch_job_id": job_id,
-                    "source_tool": source_tool,
-                    "generated_via": "batch_queue"
-                },
-                credit_cost=config.get("credit_cost")
-            )
+            # Try per-row history
+            rows_saved = False
+            if csv_path and os.path.exists(csv_path):
+                try:
+                    with open(csv_path, "r", encoding="utf-8") as f:
+                        csv_text = f.read()
+                    ttype = {
+                        "image_timeline": "image",
+                        "video_timeline": "video",
+                        "media_timeline": "media"
+                    }.get(source_tool, "image")
+                    success, rows, _total_dur, errors, _warnings, _norm = parse_timeline_csv(csv_text, ttype)
+                    if success and rows:
+                        from credit_estimator import EstimateRequest, estimate_credits as _estimate_credits
+                        # Determine which tool name the estimator should use for this source_tool
+                        estimator_tool = {
+                            "image_timeline": "video_export",
+                            "video_timeline": "video_timeline",
+                            "media_timeline": "media_timeline",
+                        }.get(source_tool, "video_export")
+                        for row in rows:
+                            row_dur = max(1.0, float(row.get("end", 0)) - float(row.get("start", 0)))
+                            # Call the estimator directly — same logic as the frontend
+                            try:
+                                est_req = EstimateRequest(
+                                    tool=estimator_tool,
+                                    duration_seconds=row_dur,
+                                    resolution=resolution,
+                                    count=1
+                                )
+                                est_resp = _estimate_credits(est_req)
+                                row_credits = est_resp["required_credits"]
+                            except Exception:
+                                row_credits = None
+                            row_file = row.get("file") or row.get("asset") or output_filename
+                            history_store.add_history(
+                                tool=tool_name,
+                                tool_label=tool_label,
+                                output_name=row_file,
+                                output_type="video",
+                                output_url=f"/outputs/{output_filename}",
+                                file_extension="mp4",
+                                duration_seconds=row_dur,
+                                file_size_bytes=file_size,
+                                resolution=resolution,
+                                aspect_ratio=aspect_ratio,
+                                render_profile=render_profile,
+                                metadata={
+                                    "batch_job_id": job_id,
+                                    "source_tool": source_tool,
+                                    "generated_via": "batch_queue",
+                                    "clip_start": row.get("start"),
+                                    "clip_end": row.get("end"),
+                                },
+                                credit_cost=row_credits
+                            )
+                        rows_saved = True
+                except Exception as parse_err:
+                    logger.warning(f"Per-row history failed, falling back to single record: {parse_err}")
+
+            # Fallback: one record for the whole job
+            if not rows_saved:
+                history_store.add_history(
+                    tool=tool_name,
+                    tool_label=tool_label,
+                    output_name=output_filename,
+                    output_type="video",
+                    output_url=f"/outputs/{output_filename}",
+                    file_extension="mp4",
+                    duration_seconds=total_duration_seconds,
+                    file_size_bytes=file_size,
+                    resolution=resolution,
+                    aspect_ratio=aspect_ratio,
+                    render_profile=render_profile,
+                    metadata={
+                        "batch_job_id": job_id,
+                        "source_tool": source_tool,
+                        "generated_via": "batch_queue"
+                    },
+                    credit_cost=total_credit_cost
+                )
+
         except Exception as he:
             logger.error(f"Failed to save batch history: {he}")
             
