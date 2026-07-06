@@ -278,11 +278,14 @@ def _process_job(job: Dict[str, Any]):
             except:
                 caption_config = {}
             caption_config["caption_source"] = caption_source
-            srt_file = config.get("srt_file", "")
-            if srt_file:
-                caption_config["srt_file"] = srt_file
+            srt_file_name = config.get("srt_file", "")
+            if not srt_file_name and "srt_file" in assets:
+                srt_file_name = assets.get("srt_file", "")
+            if srt_file_name:
+                caption_config["srt_file"] = str(job_dir / srt_file_name) if not os.path.isabs(srt_file_name) else srt_file_name
+
             
-            cache_key = f"{audio_path}_{caption_config_json}_{srt_file}"
+            cache_key = f"{audio_path}_{caption_config_json}_{srt_file_name}"
             
             if cache_key in transcription_cache:
                 caption_ass_path = transcription_cache[cache_key]

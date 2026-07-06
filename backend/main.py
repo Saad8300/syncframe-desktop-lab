@@ -2024,19 +2024,6 @@ async def api_batch_job_image_timeline(
                 f.write(content)
             saved_assets[key_name] = safe_name
 
-    
-    srt_save_path: Optional[str] = None
-    if srt_file is not None and srt_file.filename:
-        # Create a persistent temp dir for this batch job's SRT
-        import tempfile
-        import uuid
-        batch_temp = Path(tempfile.gettempdir()) / f"batch_srt_{uuid.uuid4().hex}"
-        batch_temp.mkdir(exist_ok=True)
-        srt_save_path = str(batch_temp / srt_file.filename)
-        content_srt = await srt_file.read()
-        with open(srt_save_path, "wb") as f_srt:
-            f_srt.write(content_srt)
-
     try:
         await save_upload(audio_file, "audio_file")
         await save_upload(audio_zip, "audio_zip")
@@ -2045,6 +2032,7 @@ async def api_batch_job_image_timeline(
         await save_upload(intro_file, "intro_file")
         await save_upload(outro_file, "outro_file")
         await save_upload(bg_music_file, "bg_music_file")
+        await save_upload(srt_file, "srt_file")
         
         config = {
         "caption_source": caption_source,
@@ -2070,7 +2058,7 @@ async def api_batch_job_image_timeline(
         "caption_appearance": caption_appearance,
         "caption_primary_color": caption_primary_color,
         "caption_highlight_color": caption_highlight_color,
-        "srt_file": srt_save_path if srt_save_path else "",
+        "srt_file": saved_assets.get("srt_file", ""),
             "audio_input_mode": audio_input_mode,
             "aspect_ratio": aspect_ratio,
             "export_resolution": export_resolution,
@@ -2233,19 +2221,6 @@ async def api_batch_job_video_timeline(
                 f.write(content)
             saved_assets[key_name] = safe_name
 
-    
-    srt_save_path: Optional[str] = None
-    if srt_file is not None and srt_file.filename:
-        # Create a persistent temp dir for this batch job's SRT
-        import tempfile
-        import uuid
-        batch_temp = Path(tempfile.gettempdir()) / f"batch_srt_{uuid.uuid4().hex}"
-        batch_temp.mkdir(exist_ok=True)
-        srt_save_path = str(batch_temp / srt_file.filename)
-        content_srt = await srt_file.read()
-        with open(srt_save_path, "wb") as f_srt:
-            f_srt.write(content_srt)
-
     try:
         await save_upload(audio_file, "audio_file")
         await save_upload(audio_zip, "audio_zip")
@@ -2254,6 +2229,7 @@ async def api_batch_job_video_timeline(
         await save_upload(intro_file, "intro_file")
         await save_upload(outro_file, "outro_file")
         await save_upload(background_music_file, "background_music_file")
+        await save_upload(srt_file, "srt_file")
         
 
         config = {
@@ -2280,7 +2256,7 @@ async def api_batch_job_video_timeline(
         "caption_appearance": caption_appearance,
         "caption_primary_color": caption_primary_color,
         "caption_highlight_color": caption_highlight_color,
-        "srt_file": srt_save_path if srt_save_path else "",
+        "srt_file": saved_assets.get("srt_file", ""),
             "audio_input_mode": audio_input_mode,
             "aspect_ratio": aspect_ratio,
             "export_resolution": export_resolution,
@@ -2439,19 +2415,6 @@ async def api_batch_job_media_timeline(
                 f.write(content)
             saved_assets[key_name] = safe_name
 
-    
-    srt_save_path: Optional[str] = None
-    if srt_file is not None and srt_file.filename:
-        # Create a persistent temp dir for this batch job's SRT
-        import tempfile
-        import uuid
-        batch_temp = Path(tempfile.gettempdir()) / f"batch_srt_{uuid.uuid4().hex}"
-        batch_temp.mkdir(exist_ok=True)
-        srt_save_path = str(batch_temp / srt_file.filename)
-        content_srt = await srt_file.read()
-        with open(srt_save_path, "wb") as f_srt:
-            f_srt.write(content_srt)
-
     try:
         await save_upload(audio_file, "audio_file")
         await save_upload(audio_zip, "audio_zip")
@@ -2460,6 +2423,7 @@ async def api_batch_job_media_timeline(
         await save_upload(intro_file, "intro_file")
         await save_upload(outro_file, "outro_file")
         await save_upload(background_music_file, "background_music_file")
+        await save_upload(srt_file, "srt_file")
         
         config = {
         "caption_source": caption_source,
@@ -2485,7 +2449,7 @@ async def api_batch_job_media_timeline(
         "caption_appearance": caption_appearance,
         "caption_primary_color": caption_primary_color,
         "caption_highlight_color": caption_highlight_color,
-        "srt_file": srt_save_path if srt_save_path else "",
+        "srt_file": saved_assets.get("srt_file", ""),
             "audio_input_mode": audio_input_mode,
             "aspect_ratio": aspect_ratio,
             "export_resolution": export_resolution,
