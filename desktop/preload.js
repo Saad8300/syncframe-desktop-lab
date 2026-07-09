@@ -14,4 +14,9 @@ contextBridge.exposeInMainWorld('syncframeDesktop', {
 
   // Tells AuthProvider whether we are running in a packaged build.
   isPackaged: ipcRenderer.sendSync('is-packaged'),
+
+  // ── Updater bridge ────────────────────────────────────────────────────────────
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  downloadUpdate: () => ipcRenderer.invoke('download-update'),
+  installUpdate: () => ipcRenderer.invoke('install-update'),
 });

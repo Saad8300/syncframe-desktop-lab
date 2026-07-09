@@ -3,7 +3,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const http = require('http');
 const fs = require('fs');
-
+const updateService = require('./updateService');
 const isWin = process.platform === 'win32';
 
 // ── Custom protocol for auth deep-link ────────────────────────────────────────
@@ -55,6 +55,7 @@ function log(msg) {
     fs.appendFileSync(getLogFilePath(), line + '\n');
   } catch (_) {}
 }
+updateService.setLogger(log);
 
 function initLog() {
   try {
@@ -570,6 +571,11 @@ ipcMain.on('open-external', (event, url) => {
     log('Blocked openExternal with invalid or missing URL scheme: ' + url);
   }
 });
+
+// ── Updater handlers ──────────────────────────────────────────────────────────
+ipcMain.handle('check-for-updates', async () => await updateService.checkForUpdates());
+ipcMain.handle('download-update', async () => await updateService.downloadUpdate());
+ipcMain.handle('install-update', async () => await updateService.installUpdate());
 
 // ── Auth deep-link handler ────────────────────────────────────────────────────
 function handleAuthDeepLink(url) {
