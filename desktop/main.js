@@ -373,7 +373,7 @@ function checkBackendHealth() {
 
 function resolveBackendPaths() {
   if (app.isPackaged) {
-    const backendDir = path.join(process.resourcesPath, 'backend');
+    const backendDir = path.join(process.resourcesPath, 'backend', 'syncframe-backend');
     const backendExe = path.join(backendDir, isWin ? 'syncframe-backend.exe' : 'syncframe-backend');
     return { backendExe, backendDir, isPackaged: true };
   } else {
@@ -573,9 +573,20 @@ ipcMain.on('open-external', (event, url) => {
 });
 
 // ── Updater handlers ──────────────────────────────────────────────────────────
+ipcMain.handle('get-version', () => {
+  return app.getVersion();
+});
+
 ipcMain.handle('check-for-updates', async () => await updateService.checkForUpdates());
-ipcMain.handle('download-update', async () => await updateService.downloadUpdate());
-ipcMain.handle('install-update', async () => await updateService.installUpdate());
+ipcMain.handle('download-update', async (event, release) => {
+  const publisher = (progress) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-progress', progress);
+    }
+  };
+  return await updateService.downloadUpdate(release, publisher);
+});
+ipcMain.handle('install-update', async (event, filePath) => await updateService.installUpdate(filePath));
 
 // ── Auth deep-link handler ────────────────────────────────────────────────────
 function handleAuthDeepLink(url) {

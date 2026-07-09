@@ -36,4 +36,4 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-echo [OK] Backend binary successfully built to %DEST_DIR%\syncframe-backend.exe
+echo [OK] Backend binary successfully built to %DEST_DIR%\syncframe-backend\syncframe-backend.exe

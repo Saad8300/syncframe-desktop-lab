@@ -16,7 +16,13 @@ contextBridge.exposeInMainWorld('syncframeDesktop', {
   isPackaged: ipcRenderer.sendSync('is-packaged'),
 
   // ── Updater bridge ────────────────────────────────────────────────────────────
+  getVersion: () => ipcRenderer.invoke('get-version'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
-  downloadUpdate: () => ipcRenderer.invoke('download-update'),
-  installUpdate: () => ipcRenderer.invoke('install-update'),
+  downloadUpdate: (release) => ipcRenderer.invoke('download-update', release),
+  installUpdate: (filePath) => ipcRenderer.invoke('install-update', filePath),
+  onUpdateProgress: (callback) => {
+    const handler = (_event, progress) => callback(progress);
+    ipcRenderer.on('update-progress', handler);
+    return () => ipcRenderer.removeListener('update-progress', handler);
+  },
 });

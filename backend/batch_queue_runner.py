@@ -146,7 +146,8 @@ def _process_job(job: Dict[str, Any]):
     source_tool = job.get("source_tool")
     
     logger.info(f"Processing batch job {job_id} via {source_tool}")
-    batch_queue_store.update_job(job_id, {"status": "running", "progress": 0, "message": "Starting rendering"})
+    from datetime import datetime
+    batch_queue_store.update_job(job_id, {"status": "running", "progress": 0, "message": "Starting rendering", "started_at": datetime.utcnow().isoformat() + "Z"})
     
     if source_tool not in ("image_timeline", "video_timeline", "media_timeline"):
         batch_queue_store.update_job(job_id, {"status": "failed", "message": f"Batch rendering for '{source_tool}' is not supported yet."})

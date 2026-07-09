@@ -1,7 +1,7 @@
 // frontend/src/components/StudioLayout.tsx
 // SyncFrame Studio — Sidebar layout shell with auth-aware user profile widget
 
-import React, { ReactNode, useState, useEffect } from 'react'
+import React, { ReactNode, useState, useEffect, useRef } from 'react'
 import {
   IconZap, IconSun, IconMoon, IconSettings, IconHistory,
   IconDashboard, IconMenu, IconX, IconLayers, IconChevronRight,
@@ -62,6 +62,46 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
   const { plan, subscription, loading: planLoading, initialized: planInitialized } = usePlan()
   const { remaining, credits, loading: creditsLoading } = useCredits()
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false)
+  const profileButtonRef = useRef<HTMLButtonElement>(null)
+  const profileDropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (profileDropdownOpen) {
+      // Small timeout ensures the element is mounted before focusing
+      setTimeout(() => profileDropdownRef.current?.focus(), 10)
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') setProfileDropdownOpen(false)
+        if (e.key === 'Tab' && profileDropdownRef.current) {
+          const focusable = profileDropdownRef.current.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+          const first = focusable[0] as HTMLElement
+          const last = focusable[focusable.length - 1] as HTMLElement
+          if (e.shiftKey && document.activeElement === first) {
+            last?.focus()
+            e.preventDefault()
+          } else if (!e.shiftKey && document.activeElement === last) {
+            first?.focus()
+            e.preventDefault()
+          }
+        }
+      }
+      document.addEventListener('keydown', handleKeyDown)
+      return () => document.removeEventListener('keydown', handleKeyDown)
+    } else {
+      profileButtonRef.current?.focus()
+    }
+  }, [profileDropdownOpen])
+
+  const handleManageAccount = (e: React.MouseEvent) => {
+    e.preventDefault()
+    // @ts-ignore
+    if (window.syncframeDesktop?.openExternalUrl) {
+      // @ts-ignore
+      window.syncframeDesktop.openExternalUrl(WEBSITE_URLS.DASHBOARD)
+    } else {
+      window.open(WEBSITE_URLS.DASHBOARD, '_blank')
+    }
+    setProfileDropdownOpen(false)
+  }
 
   useEffect(() => {
     try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed)) } catch { /* noop */ }
@@ -238,8 +278,9 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
             
             {/* The clickable card */}
             <button
+              ref={profileButtonRef}
               onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-              className={`flex items-center gap-2 w-full text-left rounded-xl transition-all duration-200 hover:bg-black/5 dark:hover:bg-white/5 ${collapsed ? 'justify-center p-1' : 'p-1.5'}`}
+              className={`flex items-center gap-2 w-full text-left rounded-xl transition-all duration-200 hover:bg-black/5 dark:hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 ${collapsed ? 'justify-center p-1' : 'p-1.5'}`}
             >
               {/* Avatar */}
               <div style={{
@@ -268,50 +309,68 @@ export default function StudioLayout({ children, activeTab, onNavigate, isDark, 
             {/* The Dropdown Panel */}
             {profileDropdownOpen && (
               <>
-                <div className="fixed inset-0 z-[60]" onClick={() => setProfileDropdownOpen(false)} />
                 <div 
-                  className="absolute bottom-[110%] left-2 right-2 md:left-4 md:right-auto md:w-64 rounded-2xl z-[70] animate-modal-in origin-bottom-left liquid-glass-elevated"
+                  className="fixed inset-0 z-[60] bg-black/20 backdrop-blur-[2px] animate-in fade-in duration-200" 
+                  onClick={() => setProfileDropdownOpen(false)} 
+                />
+                <div 
+                  ref={profileDropdownRef}
+                  tabIndex={-1}
+                  className="absolute bottom-[110%] left-2 right-2 md:left-4 md:right-auto md:w-[220px] rounded-2xl z-[70] origin-bottom-left shadow-2xl flex flex-col focus:outline-none animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-200"
+                  style={{
+                    background: 'var(--bg-app)',
+                    border: '1px solid var(--border-subtle)',
+                    backdropFilter: 'blur(20px)'
+                  }}
                 >
-                  <div className="p-4 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
-                    <div className="flex items-center gap-3 mb-3">
+                  <div className="p-2">
+                    <div className="flex items-center gap-3 p-2 mb-1">
                       <div style={{
-                        width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
+                        width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
                         background: 'linear-gradient(135deg,#06b6d4,#6366f1)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 14, fontWeight: 700, color: '#fff',
-                        boxShadow: '0 4px 10px rgba(99,102,241,0.3)'
+                        fontSize: 12, fontWeight: 700, color: '#fff',
+                        boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
                       }}>
                         {user.avatarUrl ? <img src={user.avatarUrl} alt={userInitial} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : userInitial}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-[14px] font-bold text-[var(--text-primary)] truncate">{user.name || userLabel}</div>
-                        <div className="text-[11px] text-[var(--text-muted)] truncate">{user.email || 'No email provided'}</div>
+                        <div className="text-[13px] font-bold text-[var(--text-primary)] truncate leading-tight">{user.name || userLabel}</div>
                       </div>
                     </div>
-                    
-                    <div className="flex flex-col gap-2 mt-2">
-                      <div className="flex justify-between items-center bg-black/5 dark:bg-white/5 p-2 rounded-lg">
-                        <PlanBadge />
-                        <a href={WEBSITE_URLS.ACCOUNT} target="_blank" rel="noopener noreferrer" className="text-[10px] uppercase font-bold text-[var(--accent-primary)] hover:text-white transition-colors">Manage</a>
-                      </div>
-                      <div className="bg-black/5 dark:bg-white/5 p-2 rounded-lg flex items-center justify-center">
-                        <CreditsBadge />
-                      </div>
-                    </div>
-                  </div>
 
-                  <div className="p-2 flex flex-col">
-                    <button 
-                      onClick={() => { signOut(); setProfileDropdownOpen(false); }}
-                      className="w-full text-left px-3 py-2 text-[12px] font-medium text-[var(--color-error)] hover:bg-[var(--color-error-bg)] rounded-lg transition-colors flex items-center gap-2"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                        <polyline points="16 17 21 12 16 7"/>
-                        <line x1="21" y1="12" x2="9" y2="12"/>
-                      </svg>
-                      Sign Out
-                    </button>
+                    <div className="h-[1px] w-full my-1" style={{ backgroundColor: 'var(--border-subtle)' }} />
+
+                    <div className="flex flex-col gap-0.5">
+                      <button 
+                        onClick={handleManageAccount}
+                        className="w-full text-left px-3 py-2 text-[12px] font-medium text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-colors flex items-center justify-between group"
+                      >
+                        <span className="flex items-center gap-2">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                          </svg>
+                          Manage Account
+                        </span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors">
+                          <line x1="7" y1="17" x2="17" y2="7"></line>
+                          <polyline points="7 7 17 7 17 17"></polyline>
+                        </svg>
+                      </button>
+                      
+                      <button 
+                        onClick={() => { signOut(); setProfileDropdownOpen(false); }}
+                        className="w-full text-left px-3 py-2 text-[12px] font-medium text-[var(--color-error)] hover:bg-[var(--color-error-bg)] rounded-lg transition-colors flex items-center gap-2"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                          <polyline points="16 17 21 12 16 7"/>
+                          <line x1="21" y1="12" x2="9" y2="12"/>
+                        </svg>
+                        Sign Out
+                      </button>
+                    </div>
                   </div>
                 </div>
               </>

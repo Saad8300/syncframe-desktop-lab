@@ -56,5 +56,5 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-success "Backend binary successfully built to $DEST_DIR/syncframe-backend"
+success "Backend binary successfully built to $DEST_DIR/syncframe-backend/syncframe-backend"
 echo ""

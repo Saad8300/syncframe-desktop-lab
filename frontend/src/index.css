@@ -10,6 +10,8 @@
    ============================================================ */
 
 :root {
+  color-scheme: dark;
+  
   /* ── Background surfaces ── */
   --bg-app:           #080c14;
   --bg-sidebar:       #0d1117;
@@ -75,6 +77,8 @@
 
 /* ── Light mode ──────────────────────────────────────────────────────────── */
 html:not(.dark) {
+  color-scheme: light;
+  
   --bg-app:           #f0f4f8;
   --bg-sidebar:       #e8edf5;
   --bg-card:          #ffffff;
@@ -540,6 +544,20 @@ html:not(.dark) {
 .animate-pulse-slow    { animation: pulse       3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
 .animate-shimmer       { animation: shimmer     2s infinite linear; }
 .animate-breathe       { animation: breathe     2s ease-in-out infinite; }
+
+@keyframes panelSwitch {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+    filter: blur(5px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0px);
+  }
+}
+.animate-panel-switch  { animation: panelSwitch 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
 /* ── Stagger delay helpers ── */
 .delay-50  { animation-delay: 50ms;  }

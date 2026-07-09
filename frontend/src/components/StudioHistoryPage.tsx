@@ -642,7 +642,7 @@ export default function StudioHistoryPage({ onNavigate }: { onNavigate?: (view: 
       </div>
 
       {/* ── Details Modal ── */}
-      {detailsItem && (
+      {detailsItem && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in" onClick={() => setDetailsItem(null)}>
           <div className="liquid-glass-elevated rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-modal-in" onClick={e => e.stopPropagation()}>
             <div className="p-5 flex items-center justify-between border-b bg-black/5 dark:bg-white/5" style={{ borderColor: 'var(--border-subtle)' }}>
@@ -705,7 +705,8 @@ export default function StudioHistoryPage({ onNavigate }: { onNavigate?: (view: 
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Confirmation Modal ── */}

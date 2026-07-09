@@ -1,4 +1,6 @@
-const { app } = require('electron');
+const { app, shell } = require('electron');
+const path = require('path');
+const fs = require('fs');
 const config = require('./config');
 
 let log = console.log;
@@ -89,16 +91,104 @@ class UpdateService {
     }
   }
 
-  async downloadUpdate() {
-    log(`[UpdateService] downloadUpdate() placeholder called.`);
-    // Phase 3 implementation
-    return { success: false, error: 'Not implemented yet.' };
+  async downloadUpdate(release, eventPublisher) {
+    if (!release || !release.id) {
+      return { success: false, error: 'Invalid release data provided.' };
+    }
+
+    try {
+      log(`[UpdateService] Requesting download URL for release ${release.id}...`);
+      const dlUrl = new URL(`${config.SUPABASE_URL}/functions/v1/get-release-download`);
+      
+      const reqRes = await fetch(dlUrl.toString(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ release_id: release.id }),
+        signal: AbortSignal.timeout(15000)
+      });
+
+      const data = await reqRes.json();
+      if (!reqRes.ok || data.error) {
+        throw new Error(data.error || reqRes.statusText || 'Failed to get download URL');
+      }
+
+      const signedUrl = data.url;
+      const fileName = data.file_name || release.file_name || 'SyncFrameStudioSetup.dmg';
+      const targetPath = path.join(app.getPath('downloads'), fileName);
+      
+      log(`[UpdateService] Starting download to ${targetPath}...`);
+      
+      const downloadRes = await fetch(signedUrl);
+      if (!downloadRes.ok) {
+        throw new Error(`Download failed: ${downloadRes.status} ${downloadRes.statusText}`);
+      }
+
+      const totalBytes = Number(downloadRes.headers.get('content-length')) || release.file_size_bytes || 0;
+      let loadedBytes = 0;
+
+      // Pipe to file
+      const fileStream = fs.createWriteStream(targetPath);
+      let reader;
+      
+      try {
+        // Node 18+ fetch returns a web stream for the body
+        if (downloadRes.body && typeof downloadRes.body.getReader === 'function') {
+          reader = downloadRes.body.getReader();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            if (!fileStream.write(value)) {
+              await new Promise(resolve => fileStream.once('drain', resolve));
+            }
+            
+            loadedBytes += value.length;
+
+            if (eventPublisher) {
+              const percent = totalBytes ? Math.round((loadedBytes / totalBytes) * 100) : 0;
+              eventPublisher({ percent, loadedBytes, totalBytes });
+            }
+          }
+        } else {
+          // Fallback for older node-fetch environments if any
+          throw new Error('Streaming download not supported in this environment.');
+        }
+      } catch (streamErr) {
+        if (reader) await reader.cancel().catch(() => {});
+        fileStream.destroy();
+        throw streamErr;
+      }
+
+      return new Promise((resolve, reject) => {
+        fileStream.on('error', reject);
+        fileStream.end(() => {
+          log(`[UpdateService] Download complete: ${targetPath}`);
+          resolve({ success: true, filePath: targetPath });
+        });
+      });
+      
+    } catch (error) {
+      log(`[UpdateService] Download error: ${error.message}`);
+      return { success: false, error: error.message };
+    }
   }
 
-  async installUpdate() {
-    log(`[UpdateService] installUpdate() placeholder called.`);
-    // Phase 3 implementation
-    return { success: false, error: 'Not implemented yet.' };
+  async installUpdate(filePath) {
+    log(`[UpdateService] Launching installer: ${filePath}`);
+    try {
+      if (!fs.existsSync(filePath)) {
+        return { success: false, error: 'Installer file not found on disk.' };
+      }
+      
+      const errMessage = await shell.openPath(filePath);
+      if (errMessage) {
+        return { success: false, error: errMessage };
+      }
+      return { success: true };
+    } catch (error) {
+      log(`[UpdateService] Install launch error: ${error.message}`);
+      return { success: false, error: error.message };
+    }
   }
 }
 

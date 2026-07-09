@@ -17,10 +17,17 @@ export default function StudioSettingsPage() {
   const [sidebarItems, setSidebarItems] = useState<SidebarItemId[]>(() => loadSidebarItems())
   const [notifSettings, setNotifSettings] = useState<NotificationSettings | null>(null)
   const [showNotifications, setShowNotifications] = useState(false)
+  const [appVersion, setAppVersion] = useState<string>('1.0.0 (Web)')
 
   useEffect(() => {
     setSettings(loadSettings())
     setNotifSettings(loadNotificationSettings())
+
+    // @ts-ignore
+    if (window.syncframeDesktop?.getVersion) {
+      // @ts-ignore
+      window.syncframeDesktop.getVersion().then(v => setAppVersion(v)).catch(() => {})
+    }
   }, [])
 
   if (!settings || !notifSettings) return null
@@ -471,6 +478,34 @@ export default function StudioSettingsPage() {
               </div>
             </div>
           )}
+        </section>
+
+        {/* ── About & Updates ── */}
+        <section className="card p-6 space-y-5">
+          <div className="flex items-center justify-between gap-4 border-b pb-3" style={{ borderColor: 'var(--border-subtle)' }}>
+            <div>
+              <h2 className="text-sm font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>About & Updates</h2>
+              <p className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>
+                View your current version and check for software updates.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>SyncFrame Studio</p>
+              <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                Version: {appVersion}
+              </p>
+            </div>
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('manual-update-check'))}
+              className="text-xs font-bold px-4 py-2 rounded-lg transition-colors hover:bg-black/5 dark:hover:bg-white/5 shrink-0"
+              style={{ color: 'var(--text-primary)', border: '1px solid var(--border-default)' }}
+            >
+              Check for Updates
+            </button>
+          </div>
         </section>
 
         {/* Reset */}

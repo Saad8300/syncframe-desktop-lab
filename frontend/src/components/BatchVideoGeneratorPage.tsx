@@ -26,6 +26,26 @@ import { canUseTool } from '../lib/plans'
 import { dispatchToast } from '../utils/notifications'
 import { useRenderLock } from '../hooks/useRenderLock'
 
+const ElapsedTime = ({ startedAt, endedAt }: { startedAt: string, endedAt?: string }) => {
+  const [elapsed, setElapsed] = useState('');
+  useEffect(() => {
+    if (!startedAt) return;
+    const update = () => {
+      const end = endedAt ? new Date(endedAt).getTime() : Date.now();
+      const ms = end - new Date(startedAt).getTime();
+      if (ms < 0) return;
+      const s = Math.floor(ms / 1000);
+      const m = Math.floor(s / 60);
+      setElapsed(m > 0 ? `${m}m ${s % 60}s` : `${s}s`);
+    };
+    update();
+    if (endedAt) return;
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [startedAt, endedAt]);
+  return elapsed ? <span>{elapsed}</span> : null;
+};
+
 export default function BatchVideoGeneratorPage() {
   const { requireAuth, user } = useAuth()
   const { plan } = usePlan()
@@ -634,13 +654,22 @@ function JobRow({ job, isSelected, onSelect, onMoveUp, onMoveDown, onDuplicate, 
           <span>{job.export_preset || job.config?.export_resolution || '1080p'}</span>
           <span>•</span>
           <span>{new Date(job.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          {(isCompleted || isFailed) && job.started_at && job.updated_at && (
+             <>
+               <span>•</span>
+               <span>Took <ElapsedTime startedAt={job.started_at} endedAt={job.updated_at} /></span>
+             </>
+          )}
         </div>
 
         {/* Active Progress */}
         {isRunning && (
           <div className="mt-3 w-full max-w-sm">
             <div className="flex justify-between text-[10px] font-bold mb-1" style={{ color: '#a855f7' }}>
-              <span>{job.message || 'Processing...'}</span>
+              <span>
+                {job.message || 'Processing...'}
+                {job.started_at && <> · <ElapsedTime startedAt={job.started_at} /> elapsed</>}
+              </span>
               <span>{job.progress}%</span>
             </div>
             <div className="w-full bg-black/10 dark:bg-white/10 rounded-full h-1.5 overflow-hidden">

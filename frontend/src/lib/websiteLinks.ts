@@ -1,6 +1,6 @@
 export const WEBSITE_URLS = {
   HOME: 'https://syncframestudio.com',
   PRICING: 'https://syncframestudio.com/pricing',
-  ACCOUNT: 'https://syncframestudio.com/account',
+  DASHBOARD: 'https://syncframestudio.site/dashboard',
   SUPPORT: 'https://syncframestudio.com/support'
 }

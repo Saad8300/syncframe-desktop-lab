@@ -26,6 +26,7 @@ import PreflightCheck, { buildPreflightChecks } from './components/PreflightChec
 import ExportPresetPanel from './components/ExportPresetPanel'
 import { TextOverlayPanel } from './components/TextOverlayPanel'
 import { CaptionSettingsSection } from './components/CaptionSettingsSection'
+import { UpdaterModal } from './components/UpdaterModal'
 import { CaptionConfig, DEFAULT_CAPTION_CONFIG } from './types/caption'
 import { AccessLimitModal } from './components/billing/AccessLimitModal'
 import NotificationToastProvider from './components/NotificationToastProvider'
@@ -233,6 +234,40 @@ export default function App() {
   const { plan, loading: planLoading } = usePlan()
   const { remaining } = useCredits()
   const { lockState } = useRenderLock()
+
+  const [updateInfo, setUpdateInfo] = useState<any>(null)
+
+  useEffect(() => {
+    // @ts-ignore
+    if (window.syncframeDesktop?.checkForUpdates) {
+      // @ts-ignore
+      window.syncframeDesktop.checkForUpdates().then((res: any) => {
+        if (res && res.updateAvailable) {
+          setUpdateInfo(res);
+        }
+      }).catch(console.error);
+
+      const handleManualCheck = () => {
+        // @ts-ignore
+        window.syncframeDesktop.checkForUpdates().then((res: any) => {
+          if (res && res.updateAvailable) {
+            setUpdateInfo(res);
+          } else {
+            import('./utils/notifications').then(({ dispatchToast }) => {
+              dispatchToast('success', 'Up to date', 'You are running the latest version of SyncFrame Studio.')
+            })
+          }
+        }).catch((err: any) => {
+          console.error(err)
+          import('./utils/notifications').then(({ dispatchToast }) => {
+            dispatchToast('error', 'Update check failed', String(err.message || err))
+          })
+        });
+      }
+      window.addEventListener('manual-update-check', handleManualCheck)
+      return () => window.removeEventListener('manual-update-check', handleManualCheck)
+    }
+  }, [])
 
 
 
@@ -707,6 +742,13 @@ export default function App() {
     <>
       <NotificationToastProvider />
       <AuthModal />
+      {updateInfo && (
+        <UpdaterModal 
+          release={updateInfo.release} 
+          currentVersion={updateInfo.currentVersion} 
+          onClose={() => setUpdateInfo(null)} 
+        />
+      )}
       <StudioLayout
         activeTab={activeView}
         onNavigate={(v) => setActiveView(v as ViewMode)}
@@ -784,7 +826,7 @@ export default function App() {
       )}
 
       {/* ── View Router ── */}
-      <div key={`${activeView}-${refreshKey}`} className="animate-fade-in-up flex-1 flex flex-col min-w-0">
+      <div key={`${activeView}-${refreshKey}`} className="animate-panel-switch flex-1 flex flex-col min-w-0">
         {/* Safe fallback for unknown views */}
         {![
           'landing', 'tools', 'dashboard', 'history', 'templates', 'settings',
