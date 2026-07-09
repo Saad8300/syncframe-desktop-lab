@@ -1,6 +1,6 @@
 {
   "name": "syncframe-desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Desktop Foundation for SyncFrame Studio",
   "main": "main.js",
   "scripts": {
@@ -20,10 +20,12 @@
       "output": "dist"
     },
     "files": [
-      "main.js",
-      "preload.js",
-      "package.json"
-    ],
+  "main.js",
+  "preload.js",
+  "updateService.js",
+  "config.js",
+  "package.json"
+],
     "extraResources": [
       {
         "from": "../frontend/dist",

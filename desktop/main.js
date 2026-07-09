@@ -615,7 +615,7 @@ app.on('second-instance', (_event, commandLine) => {
   }
 });
 
-app.whenReady().then(async () => {
+async function initializeWorkspace() {
   createWindow();
 
   const success = await startBackend();
@@ -634,9 +634,15 @@ app.whenReady().then(async () => {
       startupStages.forEach(s => log(s));
     });
   }
+}
+
+app.whenReady().then(() => {
+  initializeWorkspace();
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) {
+      initializeWorkspace();
+    }
   });
 });
 
