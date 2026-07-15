@@ -8,6 +8,8 @@ Batch 3: export resolution, render profiles, watermark.
 """
 
 import os
+import sys
+import platform
 import uuid
 
 import subprocess
@@ -110,10 +112,38 @@ def make_clean_filename(raw_name: str, default_name: str, extension: str) -> str
 # Configuration
 # ---------------------------------------------------------------------------
 
-BASE_DIR    = Path(__file__).parent
+def get_data_dir() -> Path:
+    """
+    Returns a writable directory for runtime data (uploads/outputs/temp).
+    - Packaged/frozen app: use the OS user-data folder (writable without
+      admin rights), matching where desktop-backend.log already lives.
+    - Local dev (python -m uvicorn ...): keep using the folder next to
+      main.py, so nothing changes for the dev workflow.
+    """
+    is_frozen = getattr(sys, "frozen", False)
+
+    if not is_frozen:
+        return Path(__file__).parent
+
+    if platform.system() == "Windows":
+        base = Path(os.environ["APPDATA"]) / "syncframe-desktop"
+    elif platform.system() == "Darwin":
+        base = Path.home() / "Library" / "Application Support" / "syncframe-desktop"
+    else:
+        base = Path.home() / ".syncframe-desktop"
+
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+BASE_DIR    = get_data_dir()
 UPLOADS_DIR = BASE_DIR / "uploads"
 OUTPUTS_DIR = BASE_DIR / "outputs"
 TEMP_DIR    = BASE_DIR / "temp"
+
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
 for d in [UPLOADS_DIR, OUTPUTS_DIR, TEMP_DIR]:
     d.mkdir(exist_ok=True)
