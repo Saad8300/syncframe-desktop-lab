@@ -549,7 +549,10 @@ def _process_script_timestamp_job(job: Dict[str, Any]):
         out_dir = OUTPUTS_DIR / "text"
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / out_name
-        with open(out_path, "w", encoding="utf-8") as f:
+        # CSV needs a UTF-8 BOM so Excel doesn't mis-decode non-ASCII
+        # transcription output into mojibake — see main.py's script
+        # timestamp handler for the same fix on the direct-generate path.
+        with open(out_path, "w", encoding="utf-8-sig" if ext == "csv" else "utf-8") as f:
             f.write(final_text)
 
         try:

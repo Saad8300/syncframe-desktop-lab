@@ -877,7 +877,11 @@ export default function ScriptTimestampPage() {
                           if (!c.includes('image,start,end,text')) c = 'image,start,end,text\n' + c
                           return c
                         })()
-                    downloadAs(csvContent, `${outputName}.csv`, 'text/csv')
+                    // Prepend a UTF-8 BOM so Excel (which assumes the system
+                    // codepage for BOM-less files) doesn't mis-decode
+                    // non-ASCII transcription text (em dashes, curly quotes,
+                    // accents) into mojibake.
+                    downloadAs('\uFEFF' + csvContent, `${outputName}.csv`, 'text/csv')
                   }}
                           className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg btn-primary transition-colors">
                     <IconDownload size={13} /> Download CSV

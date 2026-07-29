@@ -846,7 +846,12 @@ async def jobs_start_script_timestamp(
             out_dir = OUTPUTS_DIR / "text"
             out_dir.mkdir(exist_ok=True)
             out_path = out_dir / out_name
-            with open(out_path, "w", encoding="utf-8") as f:
+            # CSV needs a UTF-8 BOM so Excel (which assumes the system
+            # codepage for BOM-less files) doesn't mis-decode non-ASCII
+            # transcription output (em dashes, curly quotes, accents) into
+            # mojibake. SRT/TXT are read by UTF-8-native tools that don't
+            # need — and can be broken by — a BOM.
+            with open(out_path, "w", encoding="utf-8-sig" if ext == "csv" else "utf-8") as f:
                 f.write(final_text)
 
             try:
