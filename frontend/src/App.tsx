@@ -232,7 +232,7 @@ export type ViewMode = 'landing' | 'tools' | 'dashboard' | 'history' | 'template
 export default function App() {
   const { user, isAuthenticated, loading: authLoading, requireAuth } = useAuth()
   const { plan, loading: planLoading } = usePlan()
-  const { remaining } = useCredits()
+  const { remaining, refreshCredits } = useCredits()
   const { lockState } = useRenderLock()
 
   const [updateInfo, setUpdateInfo] = useState<any>(null)
@@ -495,7 +495,23 @@ export default function App() {
       duration_seconds: durationSeconds
     })
 
-    const access = canUseTool(plan, remaining, 'video_export', {
+    // Force a live balance check right before gating — `remaining` can be
+    // stale (cache, a missed refresh), and the export-blocking decision
+    // must never be made on a number that's out of sync with the real
+    // Supabase balance reserve_credits will check anyway.
+    let currentCredits = remaining
+    if (user) {
+      try {
+        currentCredits = await refreshCredits()
+      } catch (err) {
+        setLimitModalReason('Could not verify your current credit balance. Check your connection and try again.')
+        setLimitModalRequiredPlan(undefined)
+        setLimitModalOpen(true)
+        return
+      }
+    }
+
+    const access = canUseTool(plan, currentCredits, 'video_export', {
       resolution: settings.exportResolution,
       is_premium_template: false,
       duration_seconds: durationSeconds
@@ -591,7 +607,20 @@ export default function App() {
     }
 
 
-    const access = canUseTool(plan, remaining, 'batch_video', {
+    // Force a live balance check right before gating — see handleGenerate.
+    let currentCredits = remaining
+    if (user) {
+      try {
+        currentCredits = await refreshCredits()
+      } catch (err) {
+        setLimitModalReason('Could not verify your current credit balance. Check your connection and try again.')
+        setLimitModalRequiredPlan(undefined)
+        setLimitModalOpen(true)
+        return
+      }
+    }
+
+    const access = canUseTool(plan, currentCredits, 'batch_video', {
       resolution: settings.exportResolution,
       is_batch: true
     }, estimatedCredits, planLoading)

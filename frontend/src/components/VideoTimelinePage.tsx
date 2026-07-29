@@ -363,7 +363,7 @@ function VideoTimelineResult({
 export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: string) => void }) {
   const { requireAuth, user } = useAuth()
   const { plan } = usePlan()
-  const { remaining } = useCredits()
+  const { remaining, refreshCredits } = useCredits()
   const { lockState } = useRenderLock()
   const [limitModalOpen, setLimitModalOpen] = useState(false)
   const [limitModalReason, setLimitModalReason] = useState('')
@@ -570,7 +570,23 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
     const durationSeconds = Math.max(1, Math.ceil(Number(visualDur || audioDur) || 60))
 
     const estimatedCredits = await estimateCredits('video_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution || "1080p" })
-    const access = canUseTool(plan, remaining, 'video_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution }, estimatedCredits)
+
+    // Force a live balance check right before gating — `remaining` can be
+    // stale, and the export-blocking decision must never be made on a
+    // number that's out of sync with the real Supabase balance.
+    let currentCredits = remaining
+    if (user) {
+      try {
+        currentCredits = await refreshCredits()
+      } catch (err) {
+        setLimitModalReason('Could not verify your current credit balance. Check your connection and try again.')
+        setLimitModalRequiredPlan(undefined)
+        setLimitModalOpen(true)
+        return
+      }
+    }
+
+    const access = canUseTool(plan, currentCredits, 'video_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution }, estimatedCredits)
     if (!access.allowed) {
       setLimitModalReason(access.reason)
       setLimitModalRequiredPlan(access.requiredPlan)

@@ -67,8 +67,8 @@ PLANS = {
             "max_audio_length": 300,
             "max_timestamp_length": 300,
             "max_resolution": "1080p",
-            "watermark": True,
-            "batch_enabled": False,
+            "watermark": False,
+            "batch_enabled": True,
             "premium_templates": False
         },
         "features": [
@@ -87,7 +87,7 @@ PLANS = {
             "max_video_length": 900,
             "max_audio_length": 1800,
             "max_timestamp_length": 1800,
-            "max_resolution": "2K",
+            "max_resolution": "4K",
             "watermark": False,
             "batch_enabled": True,
             "premium_templates": True

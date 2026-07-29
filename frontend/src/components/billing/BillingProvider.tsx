@@ -13,6 +13,11 @@ interface BillingContextValue {
   refreshing: boolean
   error: string | null
   refresh: () => Promise<void>
+  /** Re-fetches only credit_balances (never touches plan/subscription) and
+   *  returns the fresh balance directly, so callers that need an
+   *  up-to-date number before gating an action don't have to race React's
+   *  async state updates. Throws if the fetch fails. */
+  refreshCredits: () => Promise<number>
 }
 
 const BillingContext = createContext<BillingContextValue | null>(null)
@@ -31,60 +36,33 @@ export function BillingProvider({ children }: { children: ReactNode }) {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const loadData = async (isManualRefresh = false) => {
+  // Plan/subscription resolution. Behavior is unchanged from before — this
+  // is only pulled out of the old combined loadData so that a failure here
+  // can never discard an already-successful credits fetch (see loadCredits).
+  const loadPlan = async (isManualRefresh = false) => {
     if (!isAuthenticated || !user || !isConfigured || !supabase) {
       setPlan(FALLBACK_FREE_PLAN)
       setSubscription(null)
-      setCredits(null)
-      setRemaining(30)
-      setInitialLoading(false)
-      setRefreshing(false)
       return
     }
 
     const planCacheKey = `syncframe:lastPlan:${user.id}`
-    const creditsCacheKey = `syncframe:lastCredits:${user.id}`
-    
-    let hasValidCache = false
 
     // Only hydrate from cache if it's the initial load, not a manual refresh
     if (!isManualRefresh && initialLoading) {
       try {
         const cachedPlan = localStorage.getItem(planCacheKey)
-        const cachedCredits = localStorage.getItem(creditsCacheKey)
-        
         if (cachedPlan) {
           setPlan(JSON.parse(cachedPlan))
-          hasValidCache = true
-        }
-        if (cachedCredits) {
-          const parsed = JSON.parse(cachedCredits)
-          setCredits(parsed)
-          setRemaining(parsed.remaining_credits ?? parsed.monthly_allocation ?? 30)
         }
       } catch (e) {
         // ignore cache parse errors
       }
     }
 
-    if (!hasValidCache) {
-      setInitialLoading(true)
-    } else {
-      setInitialLoading(false)
-      setInitialized(true)  // we have cached data — mark as initialized immediately
-    }
-    setRefreshing(true)
-    setError(null)
-
     try {
-      // Parallel fetch
-      const [subResult, planIdResult, creditsResult] = await Promise.all([
-        supabase.from('subscriptions').select('*').eq('user_id', user.id).single(),
-        supabase.from('subscriptions').select('plan_id').eq('user_id', user.id).single(),
-        supabase.from('credit_balances').select('balance, monthly_allocation, lifetime_used, next_reset_at').eq('user_id', user.id).single()
-      ])
+      const subResult = await supabase.from('subscriptions').select('*').eq('user_id', user.id).single()
 
-      // Plan logic
       let planId = 'free'
       let subData = null
       if (!subResult.error || subResult.error.code === 'PGRST116') {
@@ -93,13 +71,13 @@ export function BillingProvider({ children }: { children: ReactNode }) {
       } else {
         throw subResult.error
       }
-      
+
       const { data: planData, error: planError } = await supabase
         .from('plans')
         .select('*')
         .eq('id', planId)
         .single()
-        
+
       if (planError && planError.code !== 'PGRST116') throw planError
 
       if (subData) setSubscription(subData)
@@ -120,48 +98,103 @@ export function BillingProvider({ children }: { children: ReactNode }) {
         setPlan(FALLBACK_FREE_PLAN)
         localStorage.setItem(planCacheKey, JSON.stringify(FALLBACK_FREE_PLAN))
       }
+    } catch (err: any) {
+      console.error("Plan load error:", err)
+      setError(err.message)
+    }
+  }
 
-      // Credits logic
-      if (!creditsResult.error && creditsResult.data) {
-        const cData = creditsResult.data
-        setCredits(cData)
-        setRemaining(cData.balance ?? cData.monthly_allocation ?? 30)
-        localStorage.setItem(creditsCacheKey, JSON.stringify({
-          ...cData,
-          remaining_credits: cData.balance
-        }))
+  // Credits resolution, fully independent of loadPlan above. Returns the
+  // freshly-resolved balance directly (not just via state) and throws on
+  // failure instead of silently leaving a stale number in place, so a
+  // caller that needs a live number before gating an action (see
+  // refreshCredits) can tell the difference between "current" and "unknown".
+  const loadCredits = async (isManualRefresh = false): Promise<number> => {
+    if (!isAuthenticated || !user || !isConfigured || !supabase) {
+      setCredits(null)
+      setRemaining(30)
+      return 30
+    }
+
+    const creditsCacheKey = `syncframe:lastCredits:${user.id}`
+    let cachedRemaining: number | null = null
+
+    if (!isManualRefresh && initialLoading) {
+      try {
+        const cachedCredits = localStorage.getItem(creditsCacheKey)
+        if (cachedCredits) {
+          const parsed = JSON.parse(cachedCredits)
+          cachedRemaining = Number(parsed.remaining_credits ?? parsed.monthly_allocation ?? 30)
+          setCredits(parsed)
+          setRemaining(cachedRemaining)
+        }
+      } catch (e) {
+        // ignore cache parse errors
+      }
+    }
+
+    try {
+      const creditsResult = await supabase
+        .from('credit_balances')
+        .select('balance, monthly_allocation, lifetime_used, next_reset_at')
+        .eq('user_id', user.id)
+        .single()
+
+      if (creditsResult.error && creditsResult.error.code !== 'PGRST116') {
+        throw creditsResult.error
       }
 
+      if (creditsResult.data) {
+        const cData = creditsResult.data
+        const freshRemaining = cData.balance ?? cData.monthly_allocation ?? 30
+        setCredits(cData)
+        setRemaining(freshRemaining)
+        localStorage.setItem(creditsCacheKey, JSON.stringify({
+          ...cData,
+          remaining_credits: freshRemaining
+        }))
+        return freshRemaining
+      }
+
+      return cachedRemaining ?? remaining
     } catch (err: any) {
-      console.error("Billing load error:", err)
+      console.error("Credits load error:", err)
       setError(err.message)
-    } finally {
-      setInitialLoading(false)
-      setInitialized(true)
-      setRefreshing(false)
+      throw err
     }
   }
 
   useEffect(() => {
-    loadData()
+    setRefreshing(true)
+    setError(null)
+    Promise.allSettled([loadPlan(), loadCredits()]).finally(() => {
+      setInitialLoading(false)
+      setInitialized(true)
+      setRefreshing(false)
+    })
   }, [user, isAuthenticated, isConfigured])
 
   useEffect(() => {
-    const handleUpdate = () => loadData()
-    window.addEventListener('syncframe:plan-updated', handleUpdate)
-    window.addEventListener('syncframe:credits-updated', handleUpdate)
+    const handlePlanUpdate = () => loadPlan(true)
+    const handleCreditsUpdate = () => loadCredits(true).catch(() => {})
+    window.addEventListener('syncframe:plan-updated', handlePlanUpdate)
+    window.addEventListener('syncframe:credits-updated', handleCreditsUpdate)
     return () => {
-      window.removeEventListener('syncframe:plan-updated', handleUpdate)
-      window.removeEventListener('syncframe:credits-updated', handleUpdate)
+      window.removeEventListener('syncframe:plan-updated', handlePlanUpdate)
+      window.removeEventListener('syncframe:credits-updated', handleCreditsUpdate)
     }
   }, [user])
 
   const refresh = async () => {
-    await loadData(true)
+    await Promise.allSettled([loadPlan(true), loadCredits(true)])
+  }
+
+  const refreshCredits = async (): Promise<number> => {
+    return loadCredits(true)
   }
 
   return (
-    <BillingContext.Provider value={{ plan, subscription, credits, remaining, initialLoading, initialized, refreshing, error, refresh }}>
+    <BillingContext.Provider value={{ plan, subscription, credits, remaining, initialLoading, initialized, refreshing, error, refresh, refreshCredits }}>
       {children}
     </BillingContext.Provider>
   )
