@@ -37,6 +37,7 @@ import { canUseTool, Plan } from '../lib/plans'
 import { useRenderLock } from '../hooks/useRenderLock'
 import { useCreditEstimate } from '../hooks/useCreditEstimate'
 import { parseTimelineCsv } from '../utils/timelineTimeParser'
+import { readTimelineFileAsCsvText } from '../utils/timelineFileReader'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -335,23 +336,24 @@ export default function MediaTimelinePage({ onNavigate }: { onNavigate?: (view: 
       return;
     }
     try {
-      const text = await file.text();
+      const { csvText: text, warnings: formatWarnings } = await readTimelineFileAsCsvText(file);
       const result = parseTimelineCsv(text, 'media');
       if (!result.success) {
-        alert("Invalid CSV:\n" + result.errors.join("\n"));
+        alert("Invalid CSV/Excel file:\n" + result.errors.join("\n"));
         setTimelineCsv(null);
         return;
       }
 
-      if (result.warnings && result.warnings.length > 0) {
-        alert("Warnings:\n" + result.warnings.join("\n"));
+      const allWarnings = [...formatWarnings, ...(result.warnings || [])];
+      if (allWarnings.length > 0) {
+        alert("Warnings:\n" + allWarnings.join("\n"));
       }
 
       const blob = new Blob([result.normalizedCsv], { type: 'text/csv' });
       const newFile = new File([blob], file.name, { type: 'text/csv' });
       setTimelineCsv(newFile);
     } catch (err) {
-      alert("Failed to read CSV file.");
+      alert("Failed to read CSV/Excel file.");
       setTimelineCsv(null);
     }
   };
@@ -719,9 +721,9 @@ export default function MediaTimelinePage({ onNavigate }: { onNavigate?: (view: 
                 />
                 <MediaDropZone
                   id="timeline-csv"
-                  label="Timeline CSV"
-                  description="CSV controlling the timeline."
-                  accept="text/csv,.csv"
+                  label="Timeline CSV/Excel"
+                  description="CSV or Excel file controlling the timeline."
+                  accept="text/csv,.csv,.xlsx"
                   icon={<IconFileText size={18} />}
                   file={timelineCsv}
                   onChange={handleCsvUpload}

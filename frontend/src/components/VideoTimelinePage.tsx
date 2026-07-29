@@ -51,6 +51,7 @@ import { useRenderLock } from '../hooks/useRenderLock'
 import { useCreditEstimate } from '../hooks/useCreditEstimate'
 import { canUseTool, Plan } from '../lib/plans'
 import { parseTimelineCsv } from '../utils/timelineTimeParser'
+import { readTimelineFileAsCsvText } from '../utils/timelineFileReader'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -382,23 +383,24 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
       return;
     }
     try {
-      const text = await file.text();
+      const { csvText: text, warnings: formatWarnings } = await readTimelineFileAsCsvText(file);
       const result = parseTimelineCsv(text, 'video');
       if (!result.success) {
-        alert("Invalid CSV:\n" + result.errors.join("\n"));
+        alert("Invalid CSV/Excel file:\n" + result.errors.join("\n"));
         setCsvFile(null);
         return;
       }
 
-      if (result.warnings && result.warnings.length > 0) {
-        alert("Warnings:\n" + result.warnings.join("\n"));
+      const allWarnings = [...formatWarnings, ...(result.warnings || [])];
+      if (allWarnings.length > 0) {
+        alert("Warnings:\n" + allWarnings.join("\n"));
       }
 
       const blob = new Blob([result.normalizedCsv], { type: 'text/csv' });
       const newFile = new File([blob], file.name, { type: 'text/csv' });
       setCsvFile(newFile);
     } catch (err) {
-      alert("Failed to read CSV file.");
+      alert("Failed to read CSV/Excel file.");
       setCsvFile(null);
     }
   };
@@ -797,7 +799,7 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
                 )}
                 <VideoDropZone id="vt-videos-upload" label="Videos ZIP" description="ZIP of .mp4, .mov, .webm clips" accept=".zip,application/zip"
                   icon={<IconVideo size={18} />} file={videosZip} onChange={setVideosZip} disabled={isLoading} required />
-                <VideoDropZone id="vt-csv-upload" label="Timeline CSV" description="start, end, video columns" accept=".csv,text/csv"
+                <VideoDropZone id="vt-csv-upload" label="Timeline CSV/Excel" description="start, end, video columns (.csv or .xlsx)" accept=".csv,.xlsx,text/csv"
                   icon={<IconFileText size={18} />} file={csvFile} onChange={handleCsvUpload} disabled={isLoading} required />
               </div>
 

@@ -49,6 +49,7 @@ import { checkHealth, startJob, createImageTimelineBatchJob } from './utils/api'
 import { loadSettings, applyThemeMode, applyAccentColor, saveSettings, AppSettings } from './utils/appSettings'
 import { consumePendingTemplate, saveTemplate } from './utils/templateStore'
 import { parseTimelineCsv } from './utils/timelineTimeParser'
+import { readTimelineFileAsCsvText } from './utils/timelineFileReader'
 import { usePlan } from './hooks/usePlan'
 import { useCredits } from './hooks/useCredits'
 import { canUseTool, Plan } from './lib/plans'
@@ -374,23 +375,24 @@ export default function App() {
       return;
     }
     try {
-      const text = await file.text();
+      const { csvText: text, warnings: formatWarnings } = await readTimelineFileAsCsvText(file);
       const result = parseTimelineCsv(text, 'image');
       if (!result.success) {
-        alert("Invalid CSV:\n" + result.errors.join("\n"));
+        alert("Invalid CSV/Excel file:\n" + result.errors.join("\n"));
         setCsvFile(null);
         return;
       }
 
-      if (result.warnings && result.warnings.length > 0) {
-        alert("Warnings:\n" + result.warnings.join("\n"));
+      const allWarnings = [...formatWarnings, ...(result.warnings || [])];
+      if (allWarnings.length > 0) {
+        alert("Warnings:\n" + allWarnings.join("\n"));
       }
 
       const blob = new Blob([result.normalizedCsv], { type: 'text/csv' });
       const newFile = new File([blob], file.name, { type: 'text/csv' });
       setCsvFile(newFile);
     } catch (err) {
-      alert("Failed to read CSV file.");
+      alert("Failed to read CSV/Excel file.");
       setCsvFile(null);
     }
   };
@@ -996,9 +998,9 @@ export default function App() {
                         />
                         <FileDropZone
                           id="csv-upload"
-                          label="Timestamp CSV"
-                          description="image, start, end columns"
-                          accept=".csv,text/csv"
+                          label="Timestamp CSV/Excel"
+                          description="image, start, end columns (.csv or .xlsx)"
+                          accept=".csv,.xlsx,text/csv"
                           icon={<IconFileText size={14} />}
                           file={csvFile}
                           onChange={handleCsvUpload}
