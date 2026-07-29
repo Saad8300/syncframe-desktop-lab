@@ -42,6 +42,13 @@ frontend/.env.*.local
 # Written by backend/generate_supabase_config.py from frontend/.env.local.
 backend/_supabase_secrets.py
 
+# ---- Piper TTS voice models (large binaries, fetched at runtime/build) ----
+# Runtime cache lives under get_data_dir()/models/piper; in dev that resolves
+# to backend/models/piper. backend/piper_voices/ is the optional pre-download
+# location the PyInstaller spec bundles from.
+backend/models/
+backend/piper_voices/
+
 # ---- Backend uploads / outputs / temp (user-generated content) ----
 backend/uploads/*
 backend/outputs/*

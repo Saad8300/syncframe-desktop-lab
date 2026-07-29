@@ -37,6 +37,47 @@ datas += [(f, 'fonts') for f in glob.glob(os.path.join(_fonts_src_dir, '*'))]
 if os.path.exists(os.path.join(SPECPATH, '_supabase_secrets.py')):
     hiddenimports += ['_supabase_secrets']
 
+# ── Text to Speech (Piper) ───────────────────────────────────────────────────
+# piper ships espeak-ng phonemization data (~19 MB) inside its package. Without
+# it PiperVoice.load() cannot phonemize and every synthesis fails in a frozen
+# build, so the data files must be collected explicitly.
+#
+# Deliberately NOT collect_all('piper'): on piper-tts 1.5.0+ that walks
+# piper.train.*, which imports torch — a dependency this integration
+# intentionally avoids (it would add ~1.8 GB and pull in the XTTS stack we
+# excluded). The pinned 1.4.2 has no piper.train, so collect_all would be
+# safe there today, but scoping stays explicit so a future version bump
+# can't silently drag torch into the build. All eight modules below are
+# verified to exist in 1.4.2 and are exactly what the synthesis path
+# imports (checked via sys.modules after `from piper import PiperVoice`).
+datas += collect_data_files('piper')
+hiddenimports += [
+    'piper', 'piper.config', 'piper.const', 'piper.phoneme_ids',
+    'piper.phonemize_espeak', 'piper.tashkeel', 'piper.voice',
+    # Native espeak-ng bridge extension (espeakbridge.so/.pyd) — not picked up
+    # by collect_dynamic_libs, so it's referenced as a submodule import.
+    'piper.espeakbridge',
+]
+
+tmp_ret = collect_all('onnxruntime')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
+# The voice catalog index is read at runtime via sys._MEIPASS (see
+# tts_helpers._index_path) to populate the voice picker.
+datas += [(os.path.join(SPECPATH, 'piper_voices_index.json'), '.')]
+
+# Voice models bundled into the installer, if the build pre-downloaded any
+# into backend/piper_voices/. Anything not bundled is fetched once on first
+# use and cached under get_data_dir()/models/piper, so the full catalog stays
+# selectable without shipping all ~9 GB of voices inside the installer.
+_voices_src_dir = os.path.join(SPECPATH, 'piper_voices')
+if os.path.isdir(_voices_src_dir):
+    _voice_files = (
+        glob.glob(os.path.join(_voices_src_dir, '*.onnx'))
+        + glob.glob(os.path.join(_voices_src_dir, '*.onnx.json'))
+    )
+    datas += [(f, 'piper_voices') for f in _voice_files]
+
 
 a = Analysis(
     ['desktop_backend_launcher.py'],
