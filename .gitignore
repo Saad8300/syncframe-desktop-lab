@@ -38,6 +38,10 @@ env/
 frontend/.env.local
 frontend/.env.*.local
 
+# ---- Backend Supabase credentials generated at build time ----
+# Written by backend/generate_supabase_config.py from frontend/.env.local.
+backend/_supabase_secrets.py
+
 # ---- Backend uploads / outputs / temp (user-generated content) ----
 backend/uploads/*
 backend/outputs/*

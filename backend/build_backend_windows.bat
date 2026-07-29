@@ -27,6 +27,14 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+echo [INFO] Generating Supabase config from frontend\.env.local...
+python generate_supabase_config.py
+if %errorlevel% neq 0 (
+    echo.
+    echo [ERROR] Failed to generate Supabase config.
+    exit /b 1
+)
+
 echo [INFO] Ensuring PyInstaller is installed...
 python -m pip install -q pyinstaller
 

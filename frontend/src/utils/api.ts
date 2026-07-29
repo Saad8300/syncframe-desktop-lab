@@ -967,7 +967,12 @@ export async function getBatchState(): Promise<BatchState> {
 
 export async function startBatchQueue(): Promise<any> {
   const res = await fetch(apiUrl('/api/batch/start'), { method: 'POST', headers: await getAuthHeaders() })
-  if (!res.ok) throw new Error("Failed to start batch queue")
+  if (!res.ok) {
+    // Surface the real status + backend reason (e.g. a 403 plan limit)
+    // instead of a generic notice that hides why the queue won't start.
+    const text = await res.text()
+    throw new Error(parseErrorResponse(res.status, text))
+  }
   return res.json()
 }
 
@@ -985,13 +990,19 @@ export async function startBatchQueueWithValidation(): Promise<any> {
 
 export async function pauseBatchAfterCurrent(): Promise<any> {
   const res = await fetch(apiUrl('/api/batch/pause-after-current'), { method: 'POST' })
-  if (!res.ok) throw new Error("Failed to pause batch queue")
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(parseErrorResponse(res.status, text))
+  }
   return res.json()
 }
 
 export async function stopBatchQueue(): Promise<any> {
   const res = await fetch(apiUrl('/api/batch/stop'), { method: 'POST' })
-  if (!res.ok) throw new Error("Failed to stop batch queue")
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(parseErrorResponse(res.status, text))
+  }
   return res.json()
 }
 

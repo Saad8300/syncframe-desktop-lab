@@ -4,12 +4,28 @@
 # Real enforcement begins in Batch 21G — Tool Lock System.
 
 import os
+import logging
 from typing import Optional
 
 import requests
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
-SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
+from supabase_config import get_supabase_config
+
+logger = logging.getLogger(__name__)
+
+SUPABASE_URL, SUPABASE_ANON_KEY = get_supabase_config()
+
+if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+    # Without these, get_plan_id_from_token() can never resolve a real plan
+    # and every account silently degrades to "free" — which blocks paid
+    # resolutions and the batch queue. Fail loudly in the log rather than
+    # quietly downgrading paying users.
+    logger.warning(
+        "Supabase credentials unresolved (SUPABASE_URL/SUPABASE_ANON_KEY). "
+        "Server-side plan checks will treat EVERY user as Free Trial. "
+        "In a packaged build this means the build did not run "
+        "generate_supabase_config.py, or frontend/.env.local was missing."
+    )
 
 # ---------------------------------------------------------------------------
 # Placeholder — Supabase JWT verification

@@ -48,6 +48,14 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+info "Generating Supabase config from frontend/.env.local..."
+python generate_supabase_config.py
+
+if [ $? -ne 0 ]; then
+    error "Failed to generate Supabase config."
+    exit 1
+fi
+
 info "Ensuring PyInstaller is installed..."
 pip install -q pyinstaller
 
