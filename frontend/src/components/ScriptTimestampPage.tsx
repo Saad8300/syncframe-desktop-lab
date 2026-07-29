@@ -13,7 +13,7 @@ import {
 } from './icons'
 import { useAuth } from '../auth/AuthProvider'
 import StudioPageHeader from './StudioPageHeader'
-import { API_BASE_URL, apiUrl, createScriptTimestampBatchJob } from '../utils/api'
+import { API_BASE_URL, apiUrl, createScriptTimestampBatchJob, getAuthHeaders } from '../utils/api'
 import { loadSettings } from '../utils/appSettings'
 import { consumePendingTemplate, saveTemplate } from '../utils/templateStore'
 import { usePlan } from '../hooks/usePlan'
@@ -301,6 +301,7 @@ export default function ScriptTimestampPage() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/jobs/start-script-timestamp`, {
         method: 'POST',
+        headers: await getAuthHeaders(),
         body: formData,
       })
       if (!res.ok) {

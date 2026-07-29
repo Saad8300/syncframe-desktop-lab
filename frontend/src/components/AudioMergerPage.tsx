@@ -15,7 +15,7 @@ import {
 import { loadSettings } from '../utils/appSettings'
 import { consumePendingTemplate, saveTemplate } from '../utils/templateStore'
 
-import { resolveBackendUrl, createAudioMergerBatchJob } from '../utils/api'
+import { resolveBackendUrl, createAudioMergerBatchJob, getAuthHeaders } from '../utils/api'
 import { estimateCredits, reserveCredits, finalizeJob } from '../lib/credits'
 import { usePlan } from '../hooks/usePlan'
 import { useCredits } from '../hooks/useCredits'
@@ -186,6 +186,7 @@ export default function AudioMergerPage() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/tools/audio-merge`, {
         method: 'POST',
+        headers: await getAuthHeaders(),
         body: formData
       })
 

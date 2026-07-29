@@ -786,8 +786,22 @@ async def jobs_start_script_timestamp(
     max_words_per_line: Optional[str] = Form(None),
     split_on_punctuation: Optional[bool] = Form(True),
     avoid_very_short_lines: Optional[bool] = Form(True),
-    credit_cost: Optional[int] = Form(None)
+    credit_cost: Optional[int] = Form(None),
+    authorization: Optional[str] = Header(None),
 ):
+    # ── Backend Access Control ──────────────────────────────────────
+    # plan_id resolved server-side from the caller's own Supabase token
+    # (RLS-scoped to auth.uid()) — never trusted from client form data.
+    plan_id = auth_helpers.get_plan_id_from_token(auth_helpers.extract_bearer_token(authorization))
+    access = check_access(
+        user_id="placeholder_user",
+        plan_id=plan_id,
+        tool="script_timestamp",
+        options={"duration_seconds": 60},  # Mocking duration
+    )
+    if not access["allowed"]:
+        raise HTTPException(403, access["reason"])
+
     job_id = f"st_{uuid.uuid4().hex[:8]}"
     state = _new_job(job_id)
 
@@ -1013,6 +1027,7 @@ async def jobs_start_video_timeline(
     caption_highlight_color: str = Form("#FFE600"),
     srt_file: Optional[UploadFile] = File(None),
     credit_cost: Optional[int] = Form(None),
+    authorization: Optional[str] = Header(None),
 ):
     """
     Accept uploaded files and settings for Video Timeline mode (Batch 10B + 10C).
@@ -1056,6 +1071,19 @@ async def jobs_start_video_timeline(
     if render_profile not in VALID_RENDER_PROFILES:
         raise HTTPException(400, f"Invalid render_profile '{render_profile}'.")
     fill_mode_safe = fill_mode if fill_mode in VALID_FILL_MODES else "loop"
+    # ── Backend Access Control ──────────────────────────────────────
+    # plan_id resolved server-side from the caller's own Supabase token
+    # (RLS-scoped to auth.uid()) — never trusted from client form data.
+    plan_id = auth_helpers.get_plan_id_from_token(auth_helpers.extract_bearer_token(authorization))
+    access = check_access(
+        user_id="placeholder_user",
+        plan_id=plan_id,
+        tool="video_export",
+        options={"resolution": export_resolution, "duration_seconds": 60, "is_premium_template": False},
+    )
+    if not access["allowed"]:
+        raise HTTPException(403, access["reason"])
+
 
     # Set up job temp dir
     job_id   = uuid.uuid4().hex
@@ -1415,6 +1443,7 @@ async def jobs_start_media_timeline(
     caption_highlight_color: str = Form("#FFE600"),
     srt_file: Optional[UploadFile] = File(None),
     credit_cost: Optional[int] = Form(None),
+    authorization: Optional[str] = Header(None),
 ):
     """
     Accept uploaded files and settings for Media Timeline mode (Batch 11B).
@@ -1458,6 +1487,19 @@ async def jobs_start_media_timeline(
     if render_profile not in VALID_RENDER_PROFILES:
         raise HTTPException(400, f"Invalid render_profile '{render_profile}'.")
     fill_mode_safe = fill_mode if fill_mode in VALID_FILL_MODES else "loop"
+    # ── Backend Access Control ──────────────────────────────────────
+    # plan_id resolved server-side from the caller's own Supabase token
+    # (RLS-scoped to auth.uid()) — never trusted from client form data.
+    plan_id = auth_helpers.get_plan_id_from_token(auth_helpers.extract_bearer_token(authorization))
+    access = check_access(
+        user_id="placeholder_user",
+        plan_id=plan_id,
+        tool="video_export",
+        options={"resolution": export_resolution, "duration_seconds": 60, "is_premium_template": False},
+    )
+    if not access["allowed"]:
+        raise HTTPException(403, access["reason"])
+
 
     # Set up job temp dir
     job_id   = uuid.uuid4().hex
@@ -1763,12 +1805,26 @@ async def generate(
     transition:    str   = Form("none"),
     zoom_effect:   str   = Form("none"),
     output_name:   Optional[str] = Form(None),
+    authorization: Optional[str] = Header(None),
 ):
     """
     Legacy synchronous endpoint — kept for backward compatibility.
     Uses 1080p resolution and balanced profile.
     New clients should use POST /api/jobs/start for full Batch 3 features.
     """
+    # ── Backend Access Control ──────────────────────────────────────
+    # plan_id resolved server-side from the caller's own Supabase token
+    # (RLS-scoped to auth.uid()) — never trusted from client form data.
+    plan_id = auth_helpers.get_plan_id_from_token(auth_helpers.extract_bearer_token(authorization))
+    access = check_access(
+        user_id="placeholder_user",
+        plan_id=plan_id,
+        tool="video_export",
+        options={"resolution": "1080p", "duration_seconds": 60, "is_premium_template": False},
+    )
+    if not access["allowed"]:
+        raise HTTPException(403, access["reason"])
+
     job_id   = uuid.uuid4().hex
     job_temp = TEMP_DIR / job_id
     job_temp.mkdir(parents=True, exist_ok=True)
@@ -1855,8 +1911,22 @@ async def audio_merge(
     audio_parts: List[UploadFile] = File(...),
     output_format: str = Form("wav"),
     output_filename: str = Form("merged_audio"),
-    credit_cost: Optional[int] = Form(None)
+    credit_cost: Optional[int] = Form(None),
+    authorization: Optional[str] = Header(None),
 ):
+    # ── Backend Access Control ──────────────────────────────────────
+    # plan_id resolved server-side from the caller's own Supabase token
+    # (RLS-scoped to auth.uid()) — never trusted from client form data.
+    plan_id = auth_helpers.get_plan_id_from_token(auth_helpers.extract_bearer_token(authorization))
+    access = check_access(
+        user_id="placeholder_user",
+        plan_id=plan_id,
+        tool="audio_merger",
+        options={"duration_seconds": 60},
+    )
+    if not access["allowed"]:
+        raise HTTPException(403, access["reason"])
+
     import time
     job_id = f"audio_merge_{uuid.uuid4().hex[:8]}"
     job_temp = TEMP_DIR / job_id

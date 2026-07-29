@@ -17,7 +17,7 @@ import { supabase } from '../lib/supabaseClient'
  * (see backend/auth_helpers.py get_plan_id_from_token) instead of trusting
  * a client-supplied plan_id.
  */
-async function getAuthHeaders(): Promise<Record<string, string>> {
+export async function getAuthHeaders(): Promise<Record<string, string>> {
   if (!supabase) return {}
   const { data } = await supabase.auth.getSession()
   const token = data.session?.access_token
@@ -677,6 +677,7 @@ export async function startVideoTimelineJob(
 
   const res = await fetch(apiUrl('/api/jobs/start-video-timeline'), {
     method: 'POST',
+    headers: await getAuthHeaders(),
     body: form,
   })
 
@@ -711,6 +712,7 @@ export async function generateVideo(
 
   const res = await fetch(apiUrl('/api/generate'), {
     method: 'POST',
+    headers: await getAuthHeaders(),
     body: form,
   })
 
@@ -821,6 +823,7 @@ export async function startMediaTimelineJob(
 
   const res = await fetch(apiUrl('/api/jobs/start-media-timeline'), {
     method: 'POST',
+    headers: await getAuthHeaders(),
     body: form,
   })
 
