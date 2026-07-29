@@ -9,11 +9,11 @@ import logging
 import os
 import shutil
 import uuid
-from pathlib import Path
 from typing import Optional, Dict, Any
 
 import batch_queue_store
 import history_store
+from runtime_paths import get_data_dir
 from utils import make_clean_filename
 from video_generator import generate_video, GenerationCancelled
 from video_timeline_generator import generate_video_timeline, VideoTimelineCancelled
@@ -56,7 +56,7 @@ def safe_rmtree(path, *args, **kwargs):
                 time.sleep(0.5)
 
 # Base directories (same as main.py)
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = get_data_dir()
 TEMP_DIR = BASE_DIR / "temp"
 OUTPUTS_DIR = BASE_DIR / "outputs"
 

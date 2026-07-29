@@ -8,8 +8,6 @@ Batch 3: export resolution, render profiles, watermark.
 """
 
 import os
-import sys
-import platform
 import uuid
 
 import subprocess
@@ -74,6 +72,7 @@ from media_timeline_generator import generate_media_timeline, MediaTimelineCance
 from utils import seconds_to_mmss, FORMAT_DIMENSIONS
 from audio_helpers import prepare_single_audio, prepare_zip_audio, merge_audio_parts_in_order
 from transcription_helpers import transcribe_audio_backend, format_output
+from runtime_paths import get_data_dir
 import caption_engine
 import history_store
 import batch_queue_store
@@ -112,30 +111,6 @@ def make_clean_filename(raw_name: str, default_name: str, extension: str) -> str
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-
-def get_data_dir() -> Path:
-    """
-    Returns a writable directory for runtime data (uploads/outputs/temp).
-    - Packaged/frozen app: use the OS user-data folder (writable without
-      admin rights), matching where desktop-backend.log already lives.
-    - Local dev (python -m uvicorn ...): keep using the folder next to
-      main.py, so nothing changes for the dev workflow.
-    """
-    is_frozen = getattr(sys, "frozen", False)
-
-    if not is_frozen:
-        return Path(__file__).parent
-
-    if platform.system() == "Windows":
-        base = Path(os.environ["APPDATA"]) / "syncframe-desktop"
-    elif platform.system() == "Darwin":
-        base = Path.home() / "Library" / "Application Support" / "syncframe-desktop"
-    else:
-        base = Path.home() / ".syncframe-desktop"
-
-    base.mkdir(parents=True, exist_ok=True)
-    return base
-
 
 BASE_DIR    = get_data_dir()
 UPLOADS_DIR = BASE_DIR / "uploads"

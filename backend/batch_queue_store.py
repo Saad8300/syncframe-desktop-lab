@@ -4,14 +4,15 @@ import time
 import shutil
 import uuid
 from datetime import datetime
-from pathlib import Path
 from typing import Dict, Any, List, Optional
 import logging
+
+from runtime_paths import get_data_dir
 
 logger = logging.getLogger(__name__)
 
 # Base directories
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = get_data_dir()
 DATA_DIR = BASE_DIR / "data" / "batch_jobs"
 QUEUE_FILE = DATA_DIR / "queue.json"
 
