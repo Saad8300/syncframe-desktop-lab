@@ -14,3 +14,16 @@ numpy
 imageio
 imageio-ffmpeg
 faster-whisper
+# Text to Speech (Piper) — local ONNX inference. Pulls in onnxruntime
+# (already required above via its own deps) and pathvalidate. Verified not to
+# require a numpy downgrade: onnxruntime accepts numpy>=1.21.6, so the
+# existing numpy 2.x / pandas 3.x pair is unaffected.
+#
+# PINNED to 1.4.2 for reproducibility and to match the version the original
+# source app used. Note on licensing (verified against PyPI metadata, not
+# assumed): 1.4.2 is GPL-3.0-or-later (OHF-voice/piper1-gpl) — pinning here
+# does NOT avoid GPL. Only 1.1.0/1.2.0 are MIT (rhasspy/piper), and those
+# require piper-phonemize, which publishes no Windows and no Apple-Silicon
+# wheels, so they cannot ship cross-platform. Every installable version of
+# this package is GPL; treat the engine's license as GPL-3.0.
+piper-tts==1.4.2

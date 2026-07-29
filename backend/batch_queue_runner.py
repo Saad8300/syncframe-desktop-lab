@@ -20,6 +20,7 @@ from video_timeline_generator import generate_video_timeline, VideoTimelineCance
 from media_timeline_generator import generate_media_timeline, MediaTimelineCancelled
 from audio_helpers import prepare_single_audio, prepare_zip_audio, merge_audio_parts_in_order
 from transcription_helpers import transcribe_audio_backend, format_output
+from tts_helpers import synthesize_to_file
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +158,9 @@ def _process_job(job: Dict[str, Any]):
         return
     elif source_tool == "audio_merger":
         _process_audio_merger_job(job)
+        return
+    elif source_tool == "text_to_speech":
+        _process_text_to_speech_job(job)
         return
 
     from datetime import datetime
@@ -657,6 +661,80 @@ def _process_audio_merger_job(job: Dict[str, Any]):
 
     except Exception as e:
         logger.error(f"Audio Merger batch job {job_id} failed: {e}")
+        batch_queue_store.update_job(job_id, {"status": "failed", "message": f"Failed: {str(e)}"})
+
+
+def _process_text_to_speech_job(job: Dict[str, Any]):
+    job_id = job["id"]
+    from datetime import datetime
+    batch_queue_store.update_job(job_id, {"status": "running", "progress": 0, "message": "Starting speech synthesis", "started_at": datetime.utcnow().isoformat() + "Z"})
+
+    config = job.get("config", {})
+    text = config.get("text") or ""
+    voice_id = config.get("voice_id") or ""
+
+    if not text.strip():
+        batch_queue_store.update_job(job_id, {"status": "failed", "message": "No text provided."})
+        return
+    if not voice_id:
+        batch_queue_store.update_job(job_id, {"status": "failed", "message": "No voice selected."})
+        return
+
+    def update_progress(step: str, pct: int):
+        batch_queue_store.update_job(job_id, {"progress": pct, "message": step})
+
+    try:
+        out_name = make_clean_filename(job.get("output_name", ""), "speech", ".wav")
+        base_name, extn = os.path.splitext(out_name)
+        job_id_short = job_id.split("_")[-1][:8] if "_" in job_id else job_id[:8]
+        out_name = f"{base_name}_{job_id_short}{extn}"
+
+        out_dir = OUTPUTS_DIR / "audio"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = str(out_dir / out_name)
+
+        meta = synthesize_to_file(
+            text=text,
+            voice_id=voice_id,
+            output_path=out_path,
+            speed=float(config.get("speed", 1.0)),
+            progress_callback=update_progress,
+        )
+
+        try:
+            history_store.add_history(
+                tool="text_to_speech",
+                tool_label="Text to Speech (Batch)",
+                output_name=out_name,
+                output_type="audio",
+                output_url=f"/outputs/audio/{out_name}",
+                file_extension="wav",
+                duration_seconds=meta.get("duration_seconds"),
+                file_size_bytes=meta.get("file_size_bytes"),
+                metadata={
+                    "batch_job_id": job_id,
+                    "source_tool": "text_to_speech",
+                    "generated_via": "batch_queue",
+                    "voice_id": voice_id,
+                    "voice_engine": "piper",
+                    "speed": meta.get("speed"),
+                    "char_count": meta.get("char_count"),
+                    "sample_rate": meta.get("sample_rate"),
+                },
+                credit_cost=config.get("credit_cost"),
+            )
+        except Exception as he:
+            logger.error(f"Failed to save batch history: {he}")
+
+        batch_queue_store.update_job(job_id, {
+            "status": "completed",
+            "progress": 100,
+            "message": "Completed successfully",
+            "output_url": f"/outputs/audio/{out_name}",
+        })
+
+    except Exception as e:
+        logger.error(f"Text to Speech batch job {job_id} failed: {e}")
         batch_queue_store.update_job(job_id, {"status": "failed", "message": f"Failed: {str(e)}"})
 
 

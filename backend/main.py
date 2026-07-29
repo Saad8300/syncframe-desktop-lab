@@ -80,6 +80,7 @@ import batch_queue_runner
 import credit_estimator
 from access_control import check_access
 import auth_helpers
+import tts_helpers
 from pydantic import BaseModel
 
 
@@ -1880,6 +1881,189 @@ async def generate(
         except Exception:
             pass
 
+
+
+# ---------------------------------------------------------------------------
+# Text to Speech Routes (Piper — local, offline, CPU)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/tts/voices")
+def api_tts_voices():
+    """Full Piper voice catalog for the voice picker (grouped client-side)."""
+    try:
+        return JSONResponse(content={"voices": tts_helpers.list_voices()})
+    except Exception as e:
+        logger.error(f"Failed to list TTS voices: {e}")
+        raise HTTPException(500, f"Could not load voice catalog: {e}")
+
+
+@app.post("/api/jobs/start-text-to-speech")
+async def jobs_start_text_to_speech(
+    text: str = Form(...),
+    voice_id: str = Form(...),
+    speed: float = Form(1.0),
+    output_name: Optional[str] = Form(None),
+    credit_cost: Optional[int] = Form(None),
+    authorization: Optional[str] = Header(None),
+):
+    """
+    Start a Text to Speech job. Returns {job_id}; the client polls
+    GET /api/jobs/{job_id}/status, matching Script Timestamp's flow.
+    """
+    # ── Backend Access Control ──────────────────────────────────────
+    # plan_id resolved server-side from the caller's own Supabase token
+    # (RLS-scoped to auth.uid()) — never trusted from client form data.
+    plan_id = auth_helpers.get_plan_id_from_token(auth_helpers.extract_bearer_token(authorization))
+    access = check_access(
+        user_id="placeholder_user",
+        plan_id=plan_id,
+        tool="text_to_speech",
+        options={"duration_seconds": 60},  # Mocking duration
+    )
+    if not access["allowed"]:
+        raise HTTPException(403, access["reason"])
+
+    if not (text or "").strip():
+        raise HTTPException(400, "Text is required.")
+
+    job_id = f"tts_{uuid.uuid4().hex[:8]}"
+    state = _new_job(job_id)
+
+    def _worker():
+        try:
+            logger.info(f"Job {job_id} Text to Speech Started. voice={voice_id}, chars={len(text)}, speed={speed}")
+            with _jobs_lock:
+                state["status"] = "running"
+                state["started_at"] = time.time()
+                state["current_step"] = "Preparing voice"
+                state["progress"] = 0
+
+            def _progress_cb(step: str, pct: int):
+                with _jobs_lock:
+                    if state["cancel_event"].is_set():
+                        raise GenerationCancelled("Job cancelled by user.")
+                    state["current_step"] = step
+                    state["progress"] = pct
+
+            out_name = make_clean_filename(output_name or "", "speech", ".wav")
+            out_dir = OUTPUTS_DIR / "audio"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_path = str(out_dir / out_name)
+
+            meta = tts_helpers.synthesize_to_file(
+                text=text,
+                voice_id=voice_id,
+                output_path=out_path,
+                speed=speed,
+                progress_callback=_progress_cb,
+            )
+
+            try:
+                history_store.add_history(
+                    tool="text_to_speech",
+                    tool_label="Text to Speech",
+                    output_name=out_name,
+                    output_type="audio",
+                    output_url=f"/outputs/audio/{out_name}",
+                    file_extension="wav",
+                    duration_seconds=meta.get("duration_seconds"),
+                    file_size_bytes=meta.get("file_size_bytes"),
+                    metadata={
+                        "voice_id": voice_id,
+                        "voice_engine": "piper",
+                        "speed": meta.get("speed"),
+                        "char_count": meta.get("char_count"),
+                        "sample_rate": meta.get("sample_rate"),
+                    },
+                    credit_cost=credit_cost,
+                )
+            except Exception as e:
+                logger.error(f"Failed to add history: {e}")
+
+            with _jobs_lock:
+                state["status"] = "completed"
+                state["progress"] = 100
+                state["current_step"] = "Complete"
+                state["finished_at"] = time.time()
+                state["output_url"] = f"/outputs/audio/{out_name}"
+                state["timeline_report"] = [{
+                    "type": "text_to_speech_result",
+                    "output_url": f"/outputs/audio/{out_name}",
+                    "output_name": out_name,
+                    **meta,
+                }]
+
+        except GenerationCancelled as e:
+            logger.info(f"Job {job_id} cancelled.")
+            with _jobs_lock:
+                state["status"] = "cancelled"
+                state["current_step"] = str(e)
+                state["finished_at"] = time.time()
+        except Exception as e:
+            logger.exception(f"Job {job_id} failed.")
+            with _jobs_lock:
+                state["status"] = "error"
+                state["current_step"] = f"Error: {str(e)}"
+                state["errors"].append(str(e))
+                state["finished_at"] = time.time()
+
+    threading.Thread(target=_worker, daemon=True).start()
+    return JSONResponse(content={"job_id": job_id})
+
+
+@app.post("/api/batch/jobs/text-to-speech")
+async def api_batch_job_text_to_speech(
+    text: str = Form(...),
+    voice_id: str = Form(...),
+    speed: float = Form(1.0),
+    output_name: Optional[str] = Form(None),
+    cjid:              Optional[str] = Form(None),
+    credit_cost:       Optional[float] = Form(None),
+    credit_reserved:   Optional[str] = Form(None),
+    credit_tool_name:  Optional[str] = Form(None),
+    duration_seconds:  Optional[float] = Form(None),
+):
+    import uuid as _uuid
+    import json as _json
+    job_id = f"batch_{_uuid.uuid4().hex[:12]}"
+    job_dir = batch_queue_store.DATA_DIR / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        config = {
+            "text": text,
+            "voice_id": voice_id,
+            "speed": float(speed or 1.0),
+            "output_name": output_name,
+            "cjid": cjid,
+            "credit_cost": credit_cost,
+            "credit_reserved": str(credit_reserved).strip().lower() == "true" if credit_reserved is not None else False,
+            "credit_tool_name": credit_tool_name,
+            "duration_seconds": duration_seconds,
+        }
+
+        with open(job_dir / "config.json", "w", encoding="utf-8") as f:
+            _json.dump(config, f, indent=2)
+
+        clean_out_name = make_clean_filename(output_name or "", "speech", "")
+
+        job = batch_queue_store.add_job(
+            source_tool="text_to_speech",
+            source_tool_label="Text to Speech",
+            title=f"Text to Speech: {clean_out_name}",
+            output_name=clean_out_name,
+            output_type="audio",
+            config=config,
+            assets={},
+        )
+        job = batch_queue_store.update_job(job["id"], {"id": job_id})
+
+        return JSONResponse(content={"job": job})
+
+    except Exception as e:
+        logger.error(f"Error saving batch job: {e}")
+        safe_rmtree(job_dir, ignore_errors=True)
+        return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
 # ---------------------------------------------------------------------------

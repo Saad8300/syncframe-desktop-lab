@@ -43,6 +43,13 @@ def estimate_credits(req: EstimateRequest):
         base_cost = math.ceil(req.duration_seconds / 300.0) * 1
         base_cost = max(base_cost, minimum)
         label = "Audio Merge"
+
+    elif req.tool == "text_to_speech":
+        cost_per_min = CREDIT_COSTS["text_to_speech"]["per_minute"]
+        minimum = CREDIT_COSTS["text_to_speech"]["minimum"]
+        base_cost = math.ceil(duration_mins) * cost_per_min
+        base_cost = max(base_cost, minimum)
+        label = "Text to Speech"
         
     elif req.tool in ["video_export", "batch_video", "video_timeline", "media_timeline"]:
         res = req.resolution if req.resolution in CREDIT_COSTS["video_export"] else "1080p"

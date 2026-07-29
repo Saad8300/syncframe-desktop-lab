@@ -17,6 +17,11 @@ from typing import Dict, Any
 CREDIT_COSTS = {
     "script_timestamp": {"per_minute": 1, "minimum": 1},
     "audio_merger": {"per_minute": 0.2, "minimum": 1}, # 1 credit per 5 mins
+    # Text to Speech: priced per minute of generated audio, matching
+    # script_timestamp's rate — both are light local CPU work on audio of a
+    # comparable length. Callers estimate duration from character count
+    # before generation (see TTS_CHARS_PER_SECOND).
+    "text_to_speech": {"per_minute": 1, "minimum": 1},
     "video_export": {
         "720p": {"per_minute": 5, "minimum": 5},
         "1080p": {"per_minute": 10, "minimum": 10},
@@ -27,6 +32,12 @@ CREDIT_COSTS = {
         "premium_template": 5,
     }
 }
+
+# Average speaking rate used to turn a character count into an estimated
+# audio duration for Text to Speech credit estimates (~180 wpm at ~5 chars
+# per word). Shared by the backend estimator and the frontend so the
+# pre-generation estimate and the charged amount agree.
+TTS_CHARS_PER_SECOND = 15.0
 
 # Plan Limits 
 # -----------
