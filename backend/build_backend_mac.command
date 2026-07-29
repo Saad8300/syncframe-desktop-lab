@@ -40,6 +40,14 @@ fi
 
 source .venv/bin/activate
 
+info "Ensuring backend dependencies are up to date..."
+pip install -q -r requirements.txt
+
+if [ $? -ne 0 ]; then
+    error "Failed to install backend requirements."
+    exit 1
+fi
+
 info "Ensuring PyInstaller is installed..."
 pip install -q pyinstaller
 

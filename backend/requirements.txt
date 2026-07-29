@@ -1,7 +1,11 @@
 fastapi
 uvicorn[standard]
 python-multipart
-requests
+# Direct dependency: backend/auth_helpers.py forwards the caller's Supabase
+# token to the REST API for server-side plan resolution. Also happens to be a
+# transitive dep of moviepy — pinned + explicit so it cannot silently vanish
+# if moviepy's dependencies change.
+requests==2.34.2
 moviepy==1.0.3
 pillow
 pandas

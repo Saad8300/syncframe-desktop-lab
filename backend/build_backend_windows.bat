@@ -19,6 +19,14 @@ if not exist ".venv\Scripts\activate.bat" (
 echo [INFO] Activating virtual environment...
 call .venv\Scripts\activate.bat
 
+echo [INFO] Ensuring backend dependencies are up to date...
+python -m pip install -q -r requirements.txt
+if %errorlevel% neq 0 (
+    echo.
+    echo [ERROR] Failed to install backend requirements.
+    exit /b 1
+)
+
 echo [INFO] Ensuring PyInstaller is installed...
 python -m pip install -q pyinstaller
 
