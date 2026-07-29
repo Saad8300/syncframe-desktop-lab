@@ -590,27 +590,11 @@ export default function MediaTimelinePage({ onNavigate }: { onNavigate?: (view: 
 
       const durationSeconds = Math.max(1, Math.ceil(Number(audioDur) || 60))
 
-      let totalCost = 0;
-      let numVideos = 1;
-      try {
-        if (timelineCsv) {
-          const text = await timelineCsv.text();
-          const parsed = parseTimelineCsv(text, 'media');
-          if (parsed.success && parsed.rows.length > 0) {
-            numVideos = parsed.rows.length;
-            for (const row of parsed.rows) {
-              const rowDur = Math.max(1, Math.ceil(row.end - row.start));
-              totalCost += await estimateCredits('media_timeline', { duration_seconds: rowDur, resolution: settings.exportResolution });
-            }
-          } else {
-            totalCost = await estimateCredits('media_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution });
-          }
-        } else {
-          totalCost = await estimateCredits('media_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution });
-        }
-      } catch (err) {
-        totalCost = await estimateCredits('media_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution });
-      }
+      // Estimate on the WHOLE job's duration, not per CSV row — one queued
+      // job renders a single output video from the entire CSV, and the server
+      // bills on total duration. Summing per row applied the per-export
+      // minimum to every short row and inflated the total ~20x.
+      const totalCost = await estimateCredits('media_timeline', { duration_seconds: durationSeconds, resolution: settings.exportResolution });
 
       cjid = crypto.randomUUID()
       const estimatedCredits = totalCost

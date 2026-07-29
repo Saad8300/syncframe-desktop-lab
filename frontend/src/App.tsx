@@ -570,41 +570,17 @@ export default function App() {
 
     const durationSeconds = Math.max(1, Math.ceil(Number(audioDuration) || 60))
 
-    let estimatedCredits = 0
-    try {
-      if (csvFile) {
-        const text = await csvFile.text()
-        const parsed = parseTimelineCsv(text, 'image')
-        if (parsed.success && parsed.rows.length > 0) {
-          for (const row of parsed.rows) {
-            const rowDur = Math.max(1, Math.ceil(row.end - row.start))
-            estimatedCredits += await estimateCredits('video_export', {
-              resolution: settings.exportResolution,
-              is_premium_template: false,
-              duration_seconds: rowDur
-            })
-          }
-        } else {
-          estimatedCredits = await estimateCredits('video_export', {
-            resolution: settings.exportResolution,
-            is_premium_template: false,
-            duration_seconds: durationSeconds
-          })
-        }
-      } else {
-        estimatedCredits = await estimateCredits('video_export', {
-          resolution: settings.exportResolution,
-          is_premium_template: false,
-          duration_seconds: durationSeconds
-        })
-      }
-    } catch (err) {
-      estimatedCredits = await estimateCredits('video_export', {
-        resolution: settings.exportResolution,
-        is_premium_template: false,
-        duration_seconds: durationSeconds
-      })
-    }
+    // Estimate on the WHOLE job's duration, not per CSV row. One queued job
+    // renders a single output video from the entire CSV, and the server
+    // (reserve_credits -> estimate_credit_cost) bills on total duration.
+    // Summing per row applied the per-export minimum (e.g. 25 credits at 4K)
+    // to every short row, inflating the total ~20x and blocking users at the
+    // credit gate over credits that would never actually be charged.
+    const estimatedCredits = await estimateCredits('video_export', {
+      resolution: settings.exportResolution,
+      is_premium_template: false,
+      duration_seconds: durationSeconds
+    })
 
 
     // Force a live balance check right before gating — see handleGenerate.
