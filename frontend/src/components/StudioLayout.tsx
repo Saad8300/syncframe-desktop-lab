@@ -42,6 +42,7 @@ function getIconForId(id: SidebarItemId, size = 17): ReactNode {
     case 'tool:media':           return <IconGrid size={size} />
     case 'tool:audio_merger':    return <IconMusic size={size} />
     case 'tool:script_timestamp': return <IconFileText size={size} />
+    case 'tool:text_to_speech':  return <IconMusic size={size} />
     default:                     return <IconZap size={size} />
   }
 }

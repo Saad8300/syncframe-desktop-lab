@@ -76,7 +76,7 @@ function IconLock({ size = 14 }: { size?: number }) {
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type ViewMode = 'home' | 'image' | 'video' | 'media' | 'audio_merger' | 'script_timestamp' | 'batch_video'
+export type ViewMode = 'home' | 'image' | 'video' | 'media' | 'audio_merger' | 'script_timestamp' | 'text_to_speech' | 'batch_video'
 
 interface Props {
   onSelectTool: (tool: ViewMode) => void
@@ -125,6 +125,13 @@ const ACTIVE_TOOLS: {
     title: 'Script Timestamp',
     desc: 'Transcribe voice audio and generate timestamped scripts.',
     accentColor: '#f59e0b',
+  },
+  {
+    id: 'text_to_speech',
+    icon: <IconMusic size={22} />,
+    title: 'Text to Speech',
+    desc: 'Turn text into natural speech with offline AI voices in many languages.',
+    accentColor: '#14b8a6',
   },
   {
     id: 'batch_video',

@@ -15,6 +15,7 @@ export type SidebarItemId =
   | 'tool:media'
   | 'tool:audio_merger'
   | 'tool:script_timestamp'
+  | 'tool:text_to_speech'
 
 export interface SidebarItem {
   id: SidebarItemId
@@ -33,6 +34,7 @@ export const ALL_SIDEBAR_ITEMS: SidebarItem[] = [
   { id: 'tool:media',           label: 'Media Timeline' },
   { id: 'tool:audio_merger',    label: 'Audio Merger' },
   { id: 'tool:script_timestamp', label: 'Script Timestamp' },
+  { id: 'tool:text_to_speech', label: 'Text to Speech' },
 ]
 
 export const DEFAULT_SIDEBAR_ITEMS: SidebarItemId[] = [

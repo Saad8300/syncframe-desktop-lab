@@ -583,6 +583,97 @@ export async function createAudioMergerBatchJob(
   return res.json() as Promise<{ job: BatchJob }>
 }
 
+// ---------------------------------------------------------------------------
+// Text to Speech (Piper — local, offline)
+// ---------------------------------------------------------------------------
+
+export interface TtsVoice {
+  id: string
+  name: string
+  language_code: string
+  language: string
+  language_native: string
+  country: string
+  quality: string
+  num_speakers: number
+  size_bytes: number
+  downloaded: boolean
+}
+
+export async function getTtsVoices(): Promise<TtsVoice[]> {
+  const res = await fetch(apiUrl('/api/tts/voices'))
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(parseErrorResponse(res.status, text))
+  }
+  const data = await res.json()
+  return data.voices as TtsVoice[]
+}
+
+export async function startTextToSpeechJob(
+  text: string,
+  voiceId: string,
+  speed: number,
+  outputName: string,
+  creditCost?: number,
+): Promise<{ job_id: string }> {
+  const form = new FormData()
+  form.append('text', text)
+  form.append('voice_id', voiceId)
+  form.append('speed', String(speed))
+  form.append('output_name', outputName || 'speech')
+  if (creditCost !== undefined) form.append('credit_cost', String(creditCost))
+
+  const res = await fetch(apiUrl('/api/jobs/start-text-to-speech'), {
+    method: 'POST',
+    headers: await getAuthHeaders(),
+    body: form,
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(parseErrorResponse(res.status, text))
+  }
+
+  return res.json() as Promise<{ job_id: string }>
+}
+
+/**
+ * Save a Text to Speech configuration to the Batch Queue instead of running
+ * immediately.
+ */
+export async function createTextToSpeechBatchJob(
+  text: string,
+  voiceId: string,
+  speed: number,
+  outputName: string,
+  credit: { cjid?: string | null, credit_cost?: number, credit_reserved?: boolean, credit_tool_name?: string, duration_seconds?: number } = {}
+): Promise<{ job: BatchJob }> {
+  const form = new FormData()
+  form.append('text', text)
+  form.append('voice_id', voiceId)
+  form.append('speed', String(speed))
+  form.append('output_name', outputName || 'speech')
+
+  if (credit.cjid) form.append('cjid', credit.cjid)
+  if (credit.credit_cost !== undefined) form.append('credit_cost', String(credit.credit_cost))
+  if (credit.credit_reserved !== undefined) form.append('credit_reserved', String(credit.credit_reserved))
+  if (credit.credit_tool_name) form.append('credit_tool_name', credit.credit_tool_name)
+  if (credit.duration_seconds !== undefined) form.append('duration_seconds', String(credit.duration_seconds))
+
+  const res = await fetch(apiUrl('/api/batch/jobs/text-to-speech'), {
+    method: 'POST',
+    body: form,
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(parseErrorResponse(res.status, text))
+  }
+
+  return res.json() as Promise<{ job: BatchJob }>
+}
+
 /** Poll a job's current status. */
 export async function getJobStatus(jobId: string): Promise<JobStatus> {
   if (!jobId) throw new Error("Invalid Job ID")

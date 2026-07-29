@@ -396,6 +396,7 @@ export default function BatchVideoGeneratorPage() {
                     <option value="media_timeline">Media Timeline</option>
                     <option value="script_timestamp">Script Timestamp</option>
                     <option value="audio_merger">Audio Merger</option>
+                    <option value="text_to_speech">Text to Speech</option>
                   </select>
                 </div>
               </div>

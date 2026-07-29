@@ -21,6 +21,7 @@ import StudioSettingsPage from './components/StudioSettingsPage'
 import StudioTemplatesPage from './components/StudioTemplatesPage'
 import AudioMergerPage from './components/AudioMergerPage'
 import ScriptTimestampPage from './components/ScriptTimestampPage'
+import TextToSpeechPage from './components/TextToSpeechPage'
 import BatchVideoGeneratorPage from './components/BatchVideoGeneratorPage'
 import PreflightCheck, { buildPreflightChecks } from './components/PreflightCheck'
 import ExportPresetPanel from './components/ExportPresetPanel'
@@ -228,7 +229,7 @@ function SummaryChip({ label, value, active }: { label: string; value: string; a
 
 // ── App ─────────────────────────────────────────────────────────────────────
 
-export type ViewMode = 'landing' | 'tools' | 'dashboard' | 'history' | 'templates' | 'settings' | 'tool:image' | 'tool:video' | 'tool:media' | 'tool:audio_merger' | 'tool:script_timestamp' | 'tool:batch_video' | 'batch_video'
+export type ViewMode = 'landing' | 'tools' | 'dashboard' | 'history' | 'templates' | 'settings' | 'tool:image' | 'tool:video' | 'tool:media' | 'tool:audio_merger' | 'tool:script_timestamp' | 'tool:text_to_speech' | 'tool:batch_video' | 'batch_video'
 
 export default function App() {
   const { user, isAuthenticated, loading: authLoading, requireAuth } = useAuth()
@@ -302,7 +303,7 @@ export default function App() {
     if (s.startupPage === 'landing') return 'landing'
     if (s.startupPage === 'studio-tools') return 'tools'
     if (s.startupPage === 'last-used') {
-      const validTools = ['tools', 'dashboard', 'history', 'settings', 'tool:image', 'tool:video', 'tool:media', 'tool:audio_merger', 'tool:script_timestamp', 'tool:batch_video']
+      const validTools = ['tools', 'dashboard', 'history', 'settings', 'tool:image', 'tool:video', 'tool:media', 'tool:audio_merger', 'tool:script_timestamp', 'tool:text_to_speech', 'tool:batch_video']
       if (validTools.includes(s.lastUsedPage)) {
         return s.lastUsedPage as ViewMode
       }
@@ -837,7 +838,7 @@ export default function App() {
         {/* Safe fallback for unknown views */}
         {![
           'landing', 'tools', 'dashboard', 'history', 'templates', 'settings',
-          'tool:audio_merger', 'tool:script_timestamp', 'tool:media',
+          'tool:audio_merger', 'tool:script_timestamp', 'tool:text_to_speech', 'tool:media',
           'tool:batch_video', 'batch_video', 'tool:video', 'tool:image'
         ].includes(activeView as string) && <StudioToolsPage onSelectTool={v => setActiveView(`tool:${v}` as ViewMode)} />}
         {activeView === 'tools' && <StudioToolsPage onSelectTool={v => setActiveView(`tool:${v}` as ViewMode)} />}
@@ -922,6 +923,7 @@ export default function App() {
 
       {activeView === 'tool:audio_merger' && <AudioMergerPage />}
       {activeView === 'tool:script_timestamp' && <ScriptTimestampPage />}
+      {activeView === 'tool:text_to_speech' && <TextToSpeechPage />}
       {activeView === 'tool:media' && <MediaTimelinePage onNavigate={(v: string) => setActiveView(v as any)} />}
       {(activeView === 'tool:batch_video' || activeView === 'batch_video') && <BatchVideoGeneratorPage />}
       {activeView === 'tool:video' && <VideoTimelinePage onNavigate={(v: string) => setActiveView(v as any)} />}
