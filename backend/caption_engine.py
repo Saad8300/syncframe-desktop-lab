@@ -1,4 +1,5 @@
 import os
+import sys
 import uuid
 import tempfile
 import logging
@@ -611,9 +612,12 @@ def apply_captions_pipeline(
         # Path escaping for the ASS filter
         safe_ass_path = ass_path.name
         
-        fontsdir_path_dev = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "public", "fonts"))
-        fontsdir_path_prod = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "fonts"))
-        fontsdir_path = fontsdir_path_dev if os.path.exists(fontsdir_path_dev) else fontsdir_path_prod
+        # Packaged/frozen app: fonts are bundled under sys._MEIPASS/fonts (see
+        # syncframe-backend.spec). Local dev: read straight from the source tree.
+        if getattr(sys, "frozen", False):
+            fontsdir_path = os.path.join(sys._MEIPASS, "fonts")
+        else:
+            fontsdir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "public", "fonts"))
         safe_fontsdir = fontsdir_path.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
 
         cmd = [

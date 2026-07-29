@@ -1,4 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
+import glob
 from PyInstaller.utils.hooks import collect_all, collect_data_files
 from PyInstaller.utils.hooks import copy_metadata
 
@@ -20,6 +22,13 @@ datas += tmp_ret[0]
 binaries += tmp_ret[1]
 hiddenimports += tmp_ret[2]
 datas += collect_data_files('faster_whisper')
+
+# Bundle the caption/text-overlay font files so ffmpeg's `fontsdir` filter
+# can find them in a packaged build. Read at runtime via sys._MEIPASS in
+# media_helpers.py / caption_engine.py — the source-tree lookup used in dev
+# doesn't resolve once the app is frozen.
+_fonts_src_dir = os.path.join(SPECPATH, '..', 'frontend', 'public', 'fonts')
+datas += [(f, 'fonts') for f in glob.glob(os.path.join(_fonts_src_dir, '*'))]
 
 
 a = Analysis(

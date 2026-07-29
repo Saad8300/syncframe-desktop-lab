@@ -261,6 +261,7 @@ def apply_ass_filters_with_ffmpeg(
 ):
     import subprocess
     import os
+    import sys
     from pathlib import Path
     import logging
 
@@ -271,9 +272,12 @@ def apply_ass_filters_with_ffmpeg(
     # Determine a safe working directory where the ASS files live
     cwd = None
 
-    fontsdir_path_dev = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "public", "fonts"))
-    fontsdir_path_prod = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "fonts"))
-    fontsdir_path = fontsdir_path_dev if os.path.exists(fontsdir_path_dev) else fontsdir_path_prod
+    # Packaged/frozen app: fonts are bundled under sys._MEIPASS/fonts (see
+    # syncframe-backend.spec). Local dev: read straight from the source tree.
+    if getattr(sys, "frozen", False):
+        fontsdir_path = os.path.join(sys._MEIPASS, "fonts")
+    else:
+        fontsdir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "public", "fonts"))
 
     # Escape path for FFmpeg filter (colon, backslash, single quote)
     safe_fontsdir = fontsdir_path.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
