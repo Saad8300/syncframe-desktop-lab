@@ -394,6 +394,8 @@ export default function BatchVideoGeneratorPage() {
                     <option value="image_timeline">Image Timeline</option>
                     <option value="video_timeline">Video Timeline</option>
                     <option value="media_timeline">Media Timeline</option>
+                    <option value="script_timestamp">Script Timestamp</option>
+                    <option value="audio_merger">Audio Merger</option>
                   </select>
                 </div>
               </div>
@@ -651,7 +653,8 @@ function JobRow({ job, isSelected, onSelect, onMoveUp, onMoveDown, onDuplicate, 
         <div className="flex items-center gap-3 mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
           <span className="truncate">{job.output_name}</span>
           <span>•</span>
-          <span>{job.export_preset || job.config?.export_resolution || '1080p'}</span>
+          {/* Resolution only applies to video-render jobs — Script Timestamp / Audio Merger have no export_resolution */}
+          <span>{['image_timeline', 'video_timeline', 'media_timeline'].includes(job.source_tool) ? (job.export_preset || job.config?.export_resolution || '1080p') : (job.config?.output_format || job.source_tool_label)}</span>
           <span>•</span>
           <span>{new Date(job.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
           {(isCompleted || isFailed) && job.started_at && job.updated_at && (

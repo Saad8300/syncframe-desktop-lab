@@ -13,7 +13,7 @@ import {
 } from './icons'
 import { useAuth } from '../auth/AuthProvider'
 import StudioPageHeader from './StudioPageHeader'
-import { API_BASE_URL, apiUrl } from '../utils/api'
+import { API_BASE_URL, apiUrl, createScriptTimestampBatchJob } from '../utils/api'
 import { loadSettings } from '../utils/appSettings'
 import { consumePendingTemplate, saveTemplate } from '../utils/templateStore'
 import { usePlan } from '../hooks/usePlan'
@@ -140,7 +140,7 @@ function buildImageTimelineCsv(segments: { start: number; end: number; text: str
 export default function ScriptTimestampPage() {
   const { requireAuth, user } = useAuth()
   const { plan } = usePlan()
-  const { remaining } = useCredits()
+  const { remaining, refreshCredits } = useCredits()
   const [limitModalOpen, setLimitModalOpen] = useState(false)
   const [limitModalReason, setLimitModalReason] = useState('')
   const [limitModalRequiredPlan, setLimitModalRequiredPlan] = useState<string | undefined>(undefined)
@@ -206,6 +206,8 @@ export default function ScriptTimestampPage() {
   const [result, setResult]         = useState<any | null>(null)
   const [copied, setCopied]         = useState(false)
   const [activeClientJobId, setActiveClientJobId] = useState<string | null>(null)
+  const [isAddingToQueue, setIsAddingToQueue] = useState(false)
+  const [successQueueMsg, setSuccessQueueMsg] = useState<string | null>(null)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -232,7 +234,23 @@ export default function ScriptTimestampPage() {
     const durationSeconds = Math.max(1, Math.ceil(Number(audioDur) || 60))
     
     const estimatedCredits = await estimateCredits('script_timestamp', { duration_seconds: durationSeconds, resolution: "1080p" })
-    const access = canUseTool(plan, remaining, 'script_timestamp', { duration_seconds: durationSeconds, resolution: "1080p" }, estimatedCredits)
+
+    // Force a live balance check right before gating — `remaining` can be
+    // stale, and the export-blocking decision must never be made on a
+    // number that's out of sync with the real Supabase balance.
+    let currentCredits = remaining
+    if (user) {
+      try {
+        currentCredits = await refreshCredits()
+      } catch (err) {
+        setLimitModalReason('Could not verify your current credit balance. Check your connection and try again.')
+        setLimitModalRequiredPlan(undefined)
+        setLimitModalOpen(true)
+        return
+      }
+    }
+
+    const access = canUseTool(plan, currentCredits, 'script_timestamp', { duration_seconds: durationSeconds, resolution: "1080p" }, estimatedCredits)
     if (!access.allowed) {
       setLimitModalReason(access.reason)
       setLimitModalRequiredPlan(access.requiredPlan)
@@ -301,6 +319,91 @@ export default function ScriptTimestampPage() {
         setErrorMsg('Backend is offline. Start the backend and try again.')
       }
       setStatus('error')
+    }
+  }
+
+  const handleAddToQueue = async () => {
+    if (!requireAuth()) return
+    if (!audioFile) {
+      setErrorMsg('Please upload an audio file.')
+      return
+    }
+
+    const durationSeconds = Math.max(1, Math.ceil(Number(audioDur) || 60))
+    const estimatedCredits = await estimateCredits('script_timestamp', { duration_seconds: durationSeconds, resolution: "1080p" })
+
+    // Force a live balance check right before gating — see handleGenerate.
+    let currentCredits = remaining
+    if (user) {
+      try {
+        currentCredits = await refreshCredits()
+      } catch (err) {
+        setLimitModalReason('Could not verify your current credit balance. Check your connection and try again.')
+        setLimitModalRequiredPlan(undefined)
+        setLimitModalOpen(true)
+        return
+      }
+    }
+
+    const access = canUseTool(plan, currentCredits, 'script_timestamp', { duration_seconds: durationSeconds, resolution: "1080p", is_batch: true }, estimatedCredits)
+    if (!access.allowed) {
+      setLimitModalReason(access.reason)
+      setLimitModalRequiredPlan(access.requiredPlan)
+      setLimitModalOpen(true)
+      return
+    }
+
+    setIsAddingToQueue(true)
+    setSuccessQueueMsg(null)
+
+    let cjid: string | null = null
+    let reserved = false
+
+    try {
+      if (user) {
+        cjid = crypto.randomUUID()
+        try {
+          await reserveCredits('script_timestamp', durationSeconds, estimatedCredits, cjid, {
+            is_batch: true, duration_seconds: durationSeconds, resolution: "1080p"
+          })
+          reserved = true
+        } catch (err: any) {
+          setLimitModalReason(err.message || 'Internet connection is required to verify credits before starting this export.')
+          setLimitModalOpen(true)
+          setIsAddingToQueue(false)
+          return
+        }
+      }
+
+      await createScriptTimestampBatchJob(audioFile, {
+        modelKey,
+        language,
+        outputStyle,
+        segmentationIntensity,
+        outputMode,
+        originalScript: originalScript.trim() ? originalScript : undefined,
+        targetSegmentLength: showAdvanced ? targetSegmentLength : undefined,
+        maxWordsPerLine: showAdvanced ? maxWordsPerLine : undefined,
+        splitOnPunctuation: showAdvanced ? splitOnPunctuation : undefined,
+        avoidVeryShortLines: showAdvanced ? avoidVeryShortLines : undefined,
+        outputName,
+      }, {
+        cjid: cjid || undefined,
+        credit_cost: estimatedCredits,
+        credit_reserved: true,
+        credit_tool_name: 'script_timestamp',
+        duration_seconds: durationSeconds,
+      })
+
+      setSuccessQueueMsg('Added to Batch Queue')
+      setTimeout(() => setSuccessQueueMsg(null), 4000)
+    } catch (err: any) {
+      if (user && cjid && reserved) {
+        await finalizeJob(cjid, 'failed').catch(console.error)
+      }
+      setErrorMsg('Failed to add to queue: ' + (err.message || err))
+    } finally {
+      setIsAddingToQueue(false)
     }
   }
 
@@ -652,6 +755,25 @@ export default function ScriptTimestampPage() {
                 <p className="text-[10px] text-center" style={{ color: 'var(--text-muted)' }}>
                   For long audio, keep the backend running and avoid closing this window.
                 </p>
+              </div>
+            )}
+
+            <button
+              onClick={handleAddToQueue}
+              disabled={!canGenerate || isAddingToQueue}
+              className={`w-full mt-3 flex items-center justify-center gap-2 rounded-xl text-sm font-bold h-12 transition-colors border ${
+                canGenerate && !isAddingToQueue
+                  ? 'hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer border-[var(--border-default)]'
+                  : 'opacity-50 cursor-not-allowed border-transparent bg-[var(--bg-elevated)]'
+              }`}
+              style={{ color: 'var(--text-primary)' }}
+            >
+              {isAddingToQueue ? <><IconLoader size={16} className="animate-spin" /> Adding...</> : <><IconUpload size={16} /> Add to Batch Queue</>}
+            </button>
+
+            {successQueueMsg && (
+              <div className="flex items-center justify-center gap-2 mt-2 p-3 rounded-lg border bg-green-500/10 border-green-500/20 text-green-500 font-bold text-sm">
+                <IconCheck size={16} /> {successQueueMsg}
               </div>
             )}
           </div>

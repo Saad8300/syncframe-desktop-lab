@@ -2557,6 +2557,154 @@ async def api_batch_job_media_timeline(
         return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
+@app.post("/api/batch/jobs/script-timestamp")
+async def api_batch_job_script_timestamp(
+    audio_file: UploadFile = File(...),
+    model_name: str = Form("base"),
+    language: str = Form("auto"),
+    output_style: str = Form("standard"),
+    segmentation_intensity: str = Form("detailed"),
+    output_format: str = Form("simple"),
+    original_script: Optional[str] = Form(None),
+    target_segment_length: Optional[str] = Form(None),
+    max_words_per_line: Optional[str] = Form(None),
+    split_on_punctuation: Optional[bool] = Form(True),
+    avoid_very_short_lines: Optional[bool] = Form(True),
+    output_name: Optional[str] = Form(None),
+    cjid:              Optional[str] = Form(None),
+    credit_cost:       Optional[float] = Form(None),
+    credit_reserved:   Optional[str] = Form(None),
+    credit_tool_name:  Optional[str] = Form(None),
+    duration_seconds:  Optional[float] = Form(None),
+):
+    import uuid
+    import json
+    job_id = f"batch_{uuid.uuid4().hex[:12]}"
+    job_dir = batch_queue_store.DATA_DIR / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+
+    saved_assets = {}
+
+    async def save_upload(file_obj: Optional[UploadFile], key_name: str):
+        if file_obj and file_obj.filename:
+            safe_name = "".join(c for c in file_obj.filename if c.isalnum() or c in ".-_")
+            path = job_dir / safe_name
+            content = await file_obj.read()
+            with open(path, "wb") as f:
+                f.write(content)
+            saved_assets[key_name] = safe_name
+
+    try:
+        await save_upload(audio_file, "audio_file")
+
+        config = {
+            "model_name": model_name,
+            "language": language,
+            "output_style": output_style,
+            "segmentation_intensity": segmentation_intensity,
+            "output_format": output_format,
+            "original_script": original_script,
+            "target_segment_length": target_segment_length,
+            "max_words_per_line": max_words_per_line,
+            "split_on_punctuation": split_on_punctuation,
+            "avoid_very_short_lines": avoid_very_short_lines,
+            "cjid": cjid,
+            "credit_cost": credit_cost,
+            "credit_reserved": str(credit_reserved).strip().lower() == "true" if credit_reserved is not None else False,
+            "credit_tool_name": credit_tool_name,
+            "duration_seconds": duration_seconds,
+        }
+
+        with open(job_dir / "config.json", "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2)
+
+        clean_out_name = make_clean_filename(output_name or "", "script_timestamp", "")
+
+        job = batch_queue_store.add_job(
+            source_tool="script_timestamp",
+            source_tool_label="Script Timestamp",
+            title=f"Script Timestamp: {clean_out_name}",
+            output_name=clean_out_name,
+            output_type="text",
+            config=config,
+            assets=saved_assets
+        )
+        job = batch_queue_store.update_job(job["id"], {"id": job_id})
+
+        return JSONResponse(content={"job": job})
+
+    except Exception as e:
+        logger.error(f"Error saving batch job: {e}")
+        safe_rmtree(job_dir, ignore_errors=True)
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
+@app.post("/api/batch/jobs/audio-merger")
+async def api_batch_job_audio_merger(
+    audio_parts: List[UploadFile] = File(...),
+    output_format: str = Form("wav"),
+    output_name: str = Form("merged_audio"),
+    cjid:              Optional[str] = Form(None),
+    credit_cost:       Optional[float] = Form(None),
+    credit_reserved:   Optional[str] = Form(None),
+    credit_tool_name:  Optional[str] = Form(None),
+    duration_seconds:  Optional[float] = Form(None),
+):
+    import uuid
+    import json
+    job_id = f"batch_{uuid.uuid4().hex[:12]}"
+    job_dir = batch_queue_store.DATA_DIR / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+
+    saved_assets = {}
+    part_names = []
+
+    try:
+        for i, part in enumerate(audio_parts):
+            content = await part.read()
+            ext = Path(part.filename).suffix.lower() if part.filename else ".mp3"
+            if ext not in {".mp3", ".wav", ".m4a", ".aac"}:
+                ext = ".mp3"
+            safe_name = f"part_{i:03d}{ext}"
+            with open(job_dir / safe_name, "wb") as f:
+                f.write(content)
+            part_names.append(safe_name)
+
+        saved_assets["audio_parts"] = part_names
+
+        config = {
+            "output_format": output_format,
+            "cjid": cjid,
+            "credit_cost": credit_cost,
+            "credit_reserved": str(credit_reserved).strip().lower() == "true" if credit_reserved is not None else False,
+            "credit_tool_name": credit_tool_name,
+            "duration_seconds": duration_seconds,
+        }
+
+        with open(job_dir / "config.json", "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2)
+
+        clean_out_name = make_clean_filename(output_name or "", "merged_audio", "")
+
+        job = batch_queue_store.add_job(
+            source_tool="audio_merger",
+            source_tool_label="Audio Merger",
+            title=f"Audio Merger: {clean_out_name}",
+            output_name=clean_out_name,
+            output_type="audio",
+            config=config,
+            assets=saved_assets
+        )
+        job = batch_queue_store.update_job(job["id"], {"id": job_id})
+
+        return JSONResponse(content={"job": job})
+
+    except Exception as e:
+        logger.error(f"Error saving batch job: {e}")
+        safe_rmtree(job_dir, ignore_errors=True)
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
 @app.get("/api/batch/jobs")
 def api_get_batch_jobs():
     try:

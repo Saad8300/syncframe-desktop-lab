@@ -15,7 +15,7 @@ import {
 import { loadSettings } from '../utils/appSettings'
 import { consumePendingTemplate, saveTemplate } from '../utils/templateStore'
 
-import { resolveBackendUrl } from '../utils/api'
+import { resolveBackendUrl, createAudioMergerBatchJob } from '../utils/api'
 import { estimateCredits, reserveCredits, finalizeJob } from '../lib/credits'
 import { usePlan } from '../hooks/usePlan'
 import { useCredits } from '../hooks/useCredits'
@@ -39,7 +39,7 @@ interface MergeResponse {
 export default function AudioMergerPage() {
   const { user, requireAuth } = useAuth()
   const { plan } = usePlan()
-  const { remaining } = useCredits()
+  const { remaining, refreshCredits } = useCredits()
   const [limitModalOpen, setLimitModalOpen] = useState(false)
   const [limitModalReason, setLimitModalReason] = useState('')
   const [limitModalRequiredPlan, setLimitModalRequiredPlan] = useState<string | undefined>(undefined)
@@ -59,6 +59,8 @@ export default function AudioMergerPage() {
   const [errorMsg, setErrorMsg] = useState<string>('')
   const [result, setResult] = useState<MergeResponse | null>(null)
   const [activeClientJobId, setActiveClientJobId] = useState<string | null>(null)
+  const [isAddingToQueue, setIsAddingToQueue] = useState(false)
+  const [successQueueMsg, setSuccessQueueMsg] = useState<string | null>(null)
   
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -133,7 +135,23 @@ export default function AudioMergerPage() {
     }
     const durationSeconds = 60
     const estimatedCredits = await estimateCredits('audio_merger', { duration_seconds: durationSeconds })
-    const access = canUseTool(plan, remaining, 'audio_merger', { duration_seconds: durationSeconds }, estimatedCredits)
+
+    // Force a live balance check right before gating — `remaining` can be
+    // stale, and the export-blocking decision must never be made on a
+    // number that's out of sync with the real Supabase balance.
+    let currentCredits = remaining
+    if (user) {
+      try {
+        currentCredits = await refreshCredits()
+      } catch (err) {
+        setLimitModalReason('Could not verify your current credit balance. Check your connection and try again.')
+        setLimitModalRequiredPlan(undefined)
+        setLimitModalOpen(true)
+        return
+      }
+    }
+
+    const access = canUseTool(plan, currentCredits, 'audio_merger', { duration_seconds: durationSeconds }, estimatedCredits)
     if (!access.allowed) {
       setLimitModalReason(access.reason)
       setLimitModalRequiredPlan(access.requiredPlan)
@@ -203,6 +221,83 @@ export default function AudioMergerPage() {
       console.error(err)
       setErrorMsg(err.message || 'An unexpected error occurred.')
       setStatus('error')
+    }
+  }
+
+  const handleAddToQueue = async () => {
+    if (!requireAuth()) return
+    if (parts.length < 2) {
+      setErrorMsg('Add at least 2 audio parts to merge.')
+      return
+    }
+    const durationSeconds = 60
+    const estimatedCredits = await estimateCredits('audio_merger', { duration_seconds: durationSeconds })
+
+    // Force a live balance check right before gating — see handleMerge.
+    let currentCredits = remaining
+    if (user) {
+      try {
+        currentCredits = await refreshCredits()
+      } catch (err) {
+        setLimitModalReason('Could not verify your current credit balance. Check your connection and try again.')
+        setLimitModalRequiredPlan(undefined)
+        setLimitModalOpen(true)
+        return
+      }
+    }
+
+    const access = canUseTool(plan, currentCredits, 'audio_merger', { duration_seconds: durationSeconds, is_batch: true }, estimatedCredits)
+    if (!access.allowed) {
+      setLimitModalReason(access.reason)
+      setLimitModalRequiredPlan(access.requiredPlan)
+      setLimitModalOpen(true)
+      return
+    }
+
+    setIsAddingToQueue(true)
+    setSuccessQueueMsg(null)
+
+    let cjid: string | null = null
+    let reserved = false
+
+    try {
+      if (user) {
+        cjid = crypto.randomUUID()
+        try {
+          await reserveCredits('audio_merger', durationSeconds, estimatedCredits, cjid, {
+            is_batch: true, duration_seconds: durationSeconds
+          })
+          reserved = true
+        } catch (err: any) {
+          setLimitModalReason(err.message || 'Internet connection is required to verify credits before starting this export.')
+          setLimitModalOpen(true)
+          setIsAddingToQueue(false)
+          return
+        }
+      }
+
+      await createAudioMergerBatchJob(
+        parts.map(p => p.file),
+        outputFormat,
+        outputName.trim() || 'merged_audio',
+        {
+          cjid: cjid || undefined,
+          credit_cost: estimatedCredits,
+          credit_reserved: true,
+          credit_tool_name: 'audio_merger',
+          duration_seconds: durationSeconds,
+        }
+      )
+
+      setSuccessQueueMsg('Added to Batch Queue')
+      setTimeout(() => setSuccessQueueMsg(null), 4000)
+    } catch (err: any) {
+      if (user && cjid && reserved) {
+        await finalizeJob(cjid, 'failed').catch(console.error)
+      }
+      setErrorMsg('Failed to add to queue: ' + (err.message || err))
+    } finally {
+      setIsAddingToQueue(false)
     }
   }
 
@@ -418,6 +513,25 @@ export default function AudioMergerPage() {
               <p className="text-center text-[11px] mt-3" style={{ color: 'var(--text-muted)' }}>
                 Ready to merge {parts.length} parts in the selected order.
               </p>
+            )}
+
+            <button
+              onClick={handleAddToQueue}
+              disabled={parts.length < 2 || status === 'merging' || isAddingToQueue}
+              className={`w-full mt-3 flex items-center justify-center gap-2 rounded-xl text-sm font-bold h-12 transition-colors border ${
+                parts.length >= 2 && status !== 'merging' && !isAddingToQueue
+                  ? 'hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer border-[var(--border-default)]'
+                  : 'opacity-50 cursor-not-allowed border-transparent bg-[var(--bg-elevated)]'
+              }`}
+              style={{ color: 'var(--text-primary)' }}
+            >
+              {isAddingToQueue ? <><IconLoader size={16} className="animate-spin" /> Adding...</> : <><IconMusic size={16} /> Add to Batch Queue</>}
+            </button>
+
+            {successQueueMsg && (
+              <div className="flex items-center justify-center gap-2 mt-2 p-3 rounded-lg border bg-green-500/10 border-green-500/20 text-green-500 font-bold text-sm">
+                <IconCheck size={16} /> {successQueueMsg}
+              </div>
             )}
           </div>
         </div>

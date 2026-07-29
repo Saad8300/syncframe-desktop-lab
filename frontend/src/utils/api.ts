@@ -495,6 +495,94 @@ export async function createMediaTimelineBatchJob(
   return res.json() as Promise<{ job: BatchJob }>
 }
 
+/**
+ * Save a Script Timestamp configuration to the Batch Queue instead of running immediately.
+ */
+export async function createScriptTimestampBatchJob(
+  audioFile: File,
+  settings: {
+    modelKey: string
+    language: string
+    outputStyle: string
+    segmentationIntensity: string
+    outputMode: string
+    originalScript?: string
+    targetSegmentLength?: string
+    maxWordsPerLine?: string
+    splitOnPunctuation?: boolean
+    avoidVeryShortLines?: boolean
+    outputName?: string
+  },
+  credit: { cjid?: string | null, credit_cost?: number, credit_reserved?: boolean, credit_tool_name?: string, duration_seconds?: number } = {}
+): Promise<{ job: BatchJob }> {
+  const form = new FormData()
+
+  form.append('audio_file', audioFile)
+  form.append('model_name', settings.modelKey)
+  form.append('language', settings.language)
+  form.append('output_style', settings.outputStyle)
+  form.append('segmentation_intensity', settings.segmentationIntensity)
+  form.append('output_format', settings.outputMode)
+  if (settings.originalScript?.trim()) form.append('original_script', settings.originalScript)
+  if (settings.targetSegmentLength) form.append('target_segment_length', settings.targetSegmentLength)
+  if (settings.maxWordsPerLine) form.append('max_words_per_line', settings.maxWordsPerLine)
+  if (settings.splitOnPunctuation !== undefined) form.append('split_on_punctuation', settings.splitOnPunctuation ? 'true' : 'false')
+  if (settings.avoidVeryShortLines !== undefined) form.append('avoid_very_short_lines', settings.avoidVeryShortLines ? 'true' : 'false')
+  if (settings.outputName) form.append('output_name', settings.outputName)
+
+  if (credit.cjid) form.append('cjid', credit.cjid)
+  if (credit.credit_cost !== undefined) form.append('credit_cost', String(credit.credit_cost))
+  if (credit.credit_reserved !== undefined) form.append('credit_reserved', String(credit.credit_reserved))
+  if (credit.credit_tool_name) form.append('credit_tool_name', credit.credit_tool_name)
+  if (credit.duration_seconds !== undefined) form.append('duration_seconds', String(credit.duration_seconds))
+
+  const res = await fetch(apiUrl('/api/batch/jobs/script-timestamp'), {
+    method: 'POST',
+    body: form,
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(parseErrorResponse(res.status, text))
+  }
+
+  return res.json() as Promise<{ job: BatchJob }>
+}
+
+/**
+ * Save an Audio Merger configuration to the Batch Queue instead of running immediately.
+ */
+export async function createAudioMergerBatchJob(
+  audioParts: File[],
+  outputFormat: 'wav' | 'mp3',
+  outputName: string,
+  credit: { cjid?: string | null, credit_cost?: number, credit_reserved?: boolean, credit_tool_name?: string, duration_seconds?: number } = {}
+): Promise<{ job: BatchJob }> {
+  const form = new FormData()
+
+  audioParts.forEach(part => form.append('audio_parts', part))
+  form.append('output_format', outputFormat)
+  form.append('output_name', outputName || 'merged_audio')
+
+  if (credit.cjid) form.append('cjid', credit.cjid)
+  if (credit.credit_cost !== undefined) form.append('credit_cost', String(credit.credit_cost))
+  if (credit.credit_reserved !== undefined) form.append('credit_reserved', String(credit.credit_reserved))
+  if (credit.credit_tool_name) form.append('credit_tool_name', credit.credit_tool_name)
+  if (credit.duration_seconds !== undefined) form.append('duration_seconds', String(credit.duration_seconds))
+
+  const res = await fetch(apiUrl('/api/batch/jobs/audio-merger'), {
+    method: 'POST',
+    body: form,
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(parseErrorResponse(res.status, text))
+  }
+
+  return res.json() as Promise<{ job: BatchJob }>
+}
+
 /** Poll a job's current status. */
 export async function getJobStatus(jobId: string): Promise<JobStatus> {
   if (!jobId) throw new Error("Invalid Job ID")

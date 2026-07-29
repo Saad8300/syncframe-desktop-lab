@@ -18,7 +18,8 @@ from utils import make_clean_filename
 from video_generator import generate_video, GenerationCancelled
 from video_timeline_generator import generate_video_timeline, VideoTimelineCancelled
 from media_timeline_generator import generate_media_timeline, MediaTimelineCancelled
-from audio_helpers import prepare_single_audio, prepare_zip_audio
+from audio_helpers import prepare_single_audio, prepare_zip_audio, merge_audio_parts_in_order
+from transcription_helpers import transcribe_audio_backend, format_output
 
 logger = logging.getLogger(__name__)
 
@@ -144,8 +145,20 @@ def _runner_loop():
 def _process_job(job: Dict[str, Any]):
     job_id = job["id"]
     source_tool = job.get("source_tool")
-    
+
     logger.info(f"Processing batch job {job_id} via {source_tool}")
+
+    # Script Timestamp and Audio Merger are not part of the video-render
+    # pipeline below (different assets, different output types) — dispatch
+    # them to their own self-contained handlers before any of the
+    # video-specific logic runs.
+    if source_tool == "script_timestamp":
+        _process_script_timestamp_job(job)
+        return
+    elif source_tool == "audio_merger":
+        _process_audio_merger_job(job)
+        return
+
     from datetime import datetime
     batch_queue_store.update_job(job_id, {"status": "running", "progress": 0, "message": "Starting rendering", "started_at": datetime.utcnow().isoformat() + "Z"})
     
@@ -480,6 +493,169 @@ def _process_job(job: Dict[str, Any]):
             safe_rmtree(run_temp, ignore_errors=True)
         except Exception:
             pass
+
+
+def _process_script_timestamp_job(job: Dict[str, Any]):
+    job_id = job["id"]
+    from datetime import datetime
+    batch_queue_store.update_job(job_id, {"status": "running", "progress": 0, "message": "Starting transcription", "started_at": datetime.utcnow().isoformat() + "Z"})
+
+    job_dir = batch_queue_store.DATA_DIR / job_id
+    if not job_dir.exists():
+        batch_queue_store.update_job(job_id, {"status": "failed", "message": "Job directory missing."})
+        return
+
+    config = job.get("config", {})
+    assets = job.get("assets", {})
+    audio_file_name = assets.get("audio_file")
+    if not audio_file_name:
+        batch_queue_store.update_job(job_id, {"status": "failed", "message": "Missing audio file in job."})
+        return
+
+    audio_path = str(job_dir / audio_file_name)
+
+    def update_progress(step: str, pct: int):
+        batch_queue_store.update_job(job_id, {"progress": pct, "message": step})
+
+    try:
+        language = config.get("language", "auto")
+        advanced = {
+            "target_segment_length": config.get("target_segment_length"),
+            "max_words_per_line": config.get("max_words_per_line"),
+            "split_on_punctuation": config.get("split_on_punctuation", True),
+            "avoid_very_short_lines": config.get("avoid_very_short_lines", True),
+        }
+
+        res = transcribe_audio_backend(
+            audio_path=audio_path,
+            model_name=config.get("model_name", "base"),
+            language=language if language != "auto" else None,
+            output_style=config.get("output_style", "standard"),
+            segmentation_intensity=config.get("segmentation_intensity", "detailed"),
+            original_script=config.get("original_script"),
+            advanced_settings=advanced,
+            progress_callback=update_progress
+        )
+
+        output_format = config.get("output_format", "simple")
+        final_text = format_output(res["segments"], output_format)
+
+        ext = "csv" if output_format == "csv" else "srt" if output_format == "srt" else "txt"
+        out_name = make_clean_filename(job.get("output_name", ""), "transcript", f".{ext}")
+        base_name, extn = os.path.splitext(out_name)
+        job_id_short = job_id.split("_")[-1][:8] if "_" in job_id else job_id[:8]
+        out_name = f"{base_name}_{job_id_short}{extn}"
+
+        out_dir = OUTPUTS_DIR / "text"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / out_name
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(final_text)
+
+        try:
+            history_store.add_history(
+                tool="script_timestamp",
+                tool_label="Script Timestamp (Batch)",
+                output_name=out_name,
+                output_type="text",
+                output_url=f"/outputs/text/{out_name}",
+                file_extension=ext,
+                duration_seconds=res.get("duration") or None,
+                file_size_bytes=os.path.getsize(out_path),
+                metadata={
+                    "batch_job_id": job_id,
+                    "source_tool": "script_timestamp",
+                    "generated_via": "batch_queue",
+                    "segments_count": len(res.get("segments", [])),
+                    "language": res.get("language", language),
+                    "model_name": res.get("model_name", config.get("model_name", "base")),
+                    "output_format": output_format
+                },
+                credit_cost=config.get("credit_cost")
+            )
+        except Exception as he:
+            logger.error(f"Failed to save batch history: {he}")
+
+        batch_queue_store.update_job(job_id, {
+            "status": "completed",
+            "progress": 100,
+            "message": "Completed successfully",
+            "output_url": f"/outputs/text/{out_name}"
+        })
+
+    except Exception as e:
+        logger.error(f"Script Timestamp batch job {job_id} failed: {e}")
+        batch_queue_store.update_job(job_id, {"status": "failed", "message": f"Failed: {str(e)}"})
+
+
+def _process_audio_merger_job(job: Dict[str, Any]):
+    job_id = job["id"]
+    from datetime import datetime
+    batch_queue_store.update_job(job_id, {"status": "running", "progress": 0, "message": "Starting merge", "started_at": datetime.utcnow().isoformat() + "Z"})
+
+    job_dir = batch_queue_store.DATA_DIR / job_id
+    if not job_dir.exists():
+        batch_queue_store.update_job(job_id, {"status": "failed", "message": "Job directory missing."})
+        return
+
+    config = job.get("config", {})
+    assets = job.get("assets", {})
+    part_names = assets.get("audio_parts") or []
+    if len(part_names) < 2:
+        batch_queue_store.update_job(job_id, {"status": "failed", "message": "At least 2 audio parts are required to merge."})
+        return
+
+    audio_paths = [str(job_dir / name) for name in part_names]
+
+    try:
+        batch_queue_store.update_job(job_id, {"progress": 10, "message": "Merging audio parts"})
+
+        output_format = config.get("output_format", "wav")
+        fmt = "wav" if str(output_format).lower() == "wav" else "mp3"
+
+        out_name = make_clean_filename(job.get("output_name", ""), "merged_audio", f".{fmt}")
+        base_name, extn = os.path.splitext(out_name)
+        job_id_short = job_id.split("_")[-1][:8] if "_" in job_id else job_id[:8]
+        out_name = f"{base_name}_{job_id_short}{extn}"
+
+        out_dir = OUTPUTS_DIR / "audio"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = str(out_dir / out_name)
+
+        duration, meta = merge_audio_parts_in_order(audio_paths, out_path, fmt)
+
+        try:
+            history_store.add_history(
+                tool="audio_merger",
+                tool_label="Audio Merger (Batch)",
+                output_name=out_name,
+                output_type="audio",
+                output_url=f"/outputs/audio/{out_name}",
+                file_extension=fmt,
+                duration_seconds=duration or None,
+                file_size_bytes=os.path.getsize(out_path) if os.path.exists(out_path) else None,
+                metadata={
+                    "batch_job_id": job_id,
+                    "source_tool": "audio_merger",
+                    "generated_via": "batch_queue",
+                    "parts_merged": meta.get("parts_merged")
+                },
+                credit_cost=config.get("credit_cost")
+            )
+        except Exception as he:
+            logger.error(f"Failed to save batch history: {he}")
+
+        batch_queue_store.update_job(job_id, {
+            "status": "completed",
+            "progress": 100,
+            "message": "Completed successfully",
+            "output_url": f"/outputs/audio/{out_name}"
+        })
+
+    except Exception as e:
+        logger.error(f"Audio Merger batch job {job_id} failed: {e}")
+        batch_queue_store.update_job(job_id, {"status": "failed", "message": f"Failed: {str(e)}"})
+
 
 def start_runner():
     with runner_state.lock:
