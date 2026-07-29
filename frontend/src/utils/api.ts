@@ -1,14 +1,28 @@
 // utils/api.ts – API client for Audio Image Sync Studio backend
 
-import type { 
-  GenerateSettings, 
-  GenerateResponse, 
-  GenerateStatus, 
-  JobStatus, 
-  VideoTimelineSettings, 
-  MediaTimelineSettings, 
-  BatchJob 
+import type {
+  GenerateSettings,
+  GenerateResponse,
+  GenerateStatus,
+  JobStatus,
+  VideoTimelineSettings,
+  MediaTimelineSettings,
+  BatchJob
 } from '../types'
+import { supabase } from '../lib/supabaseClient'
+
+/**
+ * The current user's real Supabase access token, if any. Forwarded to
+ * backend endpoints that need to resolve the caller's real plan server-side
+ * (see backend/auth_helpers.py get_plan_id_from_token) instead of trusting
+ * a client-supplied plan_id.
+ */
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  if (!supabase) return {}
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
 
 export function resolveApiBaseUrl(): string {
   if (typeof window !== 'undefined') {
@@ -210,6 +224,7 @@ export async function startJob(
 
   const res = await fetch(apiUrl('/api/jobs/start'), {
     method: 'POST',
+    headers: await getAuthHeaders(),
     body: form,
   })
 
@@ -860,7 +875,7 @@ export async function getBatchState(): Promise<BatchState> {
 }
 
 export async function startBatchQueue(): Promise<any> {
-  const res = await fetch(apiUrl('/api/batch/start'), { method: 'POST' })
+  const res = await fetch(apiUrl('/api/batch/start'), { method: 'POST', headers: await getAuthHeaders() })
   if (!res.ok) throw new Error("Failed to start batch queue")
   return res.json()
 }
@@ -868,7 +883,7 @@ export async function startBatchQueue(): Promise<any> {
 export async function startBatchQueueWithValidation(): Promise<any> {
   const jobsRes = await getBatchJobs()
   const pendingJobs = jobsRes.filter((j: any) => j.status === 'queued' || j.status === 'failed') || []
-  
+
   const missingCjid = pendingJobs.some((j: any) => !j.config?.cjid)
   if (missingCjid) {
     throw new Error("Some queued jobs are missing credit reservations. Please remove and re-add them.")

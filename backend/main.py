@@ -63,7 +63,7 @@ import re
 from pathlib import Path
 from typing import Optional, List
 
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -80,6 +80,7 @@ import batch_queue_store
 import batch_queue_runner
 import credit_estimator
 from access_control import check_access
+import auth_helpers
 from pydantic import BaseModel
 
 
@@ -346,6 +347,7 @@ async def jobs_start(
     caption_highlight_color: str = Form("#FFE600"),
     srt_file: Optional[UploadFile] = File(None),
     credit_cost: Optional[int] = Form(None),
+    authorization: Optional[str] = Header(None),
 ):
     """
     Accept uploaded files and settings, create a background job, return {job_id}.
@@ -360,11 +362,14 @@ async def jobs_start(
     if render_profile not in VALID_RENDER_PROFILES:
         raise HTTPException(400, f"Invalid render_profile '{render_profile}'. Valid: {sorted(VALID_RENDER_PROFILES)}")
 
-    # ── Placeholder Backend Access Control ────────────────────────
-    # In the future, parse authorization JWT here to get user_id & plan.
+    # ── Backend Access Control ──────────────────────────────────────
+    # plan_id is resolved server-side by forwarding the caller's own
+    # Supabase access token to the subscriptions REST endpoint, scoped by
+    # RLS to auth.uid() — never trusted from client-supplied form data.
+    plan_id = auth_helpers.get_plan_id_from_token(auth_helpers.extract_bearer_token(authorization))
     access = check_access(
         user_id="placeholder_user",
-        plan_id="pro", # Mocking as pro to allow tests for now
+        plan_id=plan_id,
         tool="video_export",
         options={
             "resolution": export_resolution,
@@ -2686,17 +2691,35 @@ def api_get_batch_state():
     return JSONResponse(content=state)
 
 @app.post("/api/batch/start")
-def api_start_batch_queue():
-    # ── Placeholder Backend Access Control ────────────────────────
-    # In the future, parse authorization JWT here to get user_id & plan.
+def api_start_batch_queue(authorization: Optional[str] = Header(None)):
+    # ── Backend Access Control ──────────────────────────────────────
+    # plan_id is resolved server-side by forwarding the caller's own
+    # Supabase access token to the subscriptions REST endpoint, scoped by
+    # RLS to auth.uid() — never trusted from client-supplied form data.
+    plan_id = auth_helpers.get_plan_id_from_token(auth_helpers.extract_bearer_token(authorization))
     access = check_access(
         user_id="placeholder_user",
-        plan_id="pro", # Mocking as pro
+        plan_id=plan_id,
         tool="batch_video",
         options={"is_batch": True}
     )
     if not access["allowed"]:
         raise HTTPException(403, access["reason"])
+
+    # Enforce the same per-video resolution cap as direct generation for
+    # every job currently queued (the batch path previously had no
+    # resolution check at all).
+    for job in batch_queue_store.get_all_jobs():
+        if job.get("status") != "queued":
+            continue
+        res_access = check_access(
+            user_id="placeholder_user",
+            plan_id=plan_id,
+            tool="batch_video",
+            options={"resolution": job.get("resolution") or "720p"}
+        )
+        if not res_access["allowed"]:
+            raise HTTPException(403, res_access["reason"])
 
     lock_status = get_render_lock_status()
     if lock_status["locked"] and lock_status["source"] == "direct":

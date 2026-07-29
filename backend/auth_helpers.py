@@ -6,6 +6,11 @@
 import os
 from typing import Optional
 
+import requests
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
+
 # ---------------------------------------------------------------------------
 # Placeholder — Supabase JWT verification
 # ---------------------------------------------------------------------------
@@ -68,3 +73,54 @@ def get_current_user_id(authorization_header: Optional[str]) -> Optional[str]:
     if payload:
         return payload.get("sub")
     return None
+
+
+# ---------------------------------------------------------------------------
+# Real, enforced — server-side plan lookup by token forwarding
+# ---------------------------------------------------------------------------
+# Rather than verifying the JWT signature ourselves (no secret management on
+# this locally-installed backend — see risk note below), we forward the
+# caller's own access token to Supabase's REST API and let Supabase verify
+# it and the existing RLS policy ("Users can view own subscription" ON
+# public.subscriptions USING auth.uid() = user_id) scope the result to the
+# real authenticated user. This gives a tamper-proof plan_id without this
+# backend ever holding a service-role key: this app ships as an installed
+# desktop binary, and a service-role key bundled into it would be
+# extractable by any user, granting full bypass of RLS on every account.
+
+def extract_bearer_token(authorization_header: Optional[str]) -> Optional[str]:
+    """Pull the raw token out of an 'Authorization: Bearer <token>' header."""
+    if not authorization_header or not authorization_header.startswith("Bearer "):
+        return None
+    token = authorization_header.removeprefix("Bearer ").strip()
+    return token or None
+
+
+def get_plan_id_from_token(access_token: Optional[str]) -> str:
+    """
+    Resolve the caller's real plan_id server-side by forwarding their
+    Supabase access token to the subscriptions REST endpoint. Falls back to
+    "free" on a missing token, network failure, or no subscription row —
+    mirroring BillingProvider.tsx's client-side fallback behavior.
+    """
+    if not access_token or not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        return "free"
+
+    try:
+        resp = requests.get(
+            f"{SUPABASE_URL}/rest/v1/subscriptions",
+            params={"select": "plan_id", "limit": "1"},
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {access_token}",
+            },
+            timeout=5,
+        )
+        if resp.status_code != 200:
+            return "free"
+        rows = resp.json()
+        if not rows:
+            return "free"
+        return rows[0].get("plan_id") or "free"
+    except requests.RequestException:
+        return "free"
