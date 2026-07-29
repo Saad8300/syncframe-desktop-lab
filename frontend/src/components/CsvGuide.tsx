@@ -24,8 +24,8 @@ export default function CsvGuide() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>CSV Format Guide</h2>
-          <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>Timestamp file reference</p>
+          <h2 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>CSV/Excel Format Guide</h2>
+          <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>Timestamp file reference — .csv or .xlsx, same columns</p>
         </div>
       </div>
 

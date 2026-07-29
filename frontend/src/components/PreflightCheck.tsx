@@ -101,7 +101,7 @@ export default function PreflightCheck({ checks, csvHeaderWarning }: PreflightCh
               <IconAlertTriangle size={11} />
             </span>
             <p className="text-[10px] leading-snug" style={{ color: '#f59e0b' }}>
-              CSV header may be invalid. Please check the format guide.
+              File header may be invalid. Please check the format guide.
             </p>
           </div>
         )}
@@ -148,9 +148,9 @@ export function buildPreflightChecks({
       detail: zipReady ? undefined : 'Upload a ZIP file with your media',
     },
     {
-      label: 'Timeline CSV',
+      label: 'Timeline CSV/Excel',
       status: csvReady ? 'ready' : 'missing',
-      detail: csvReady ? undefined : 'Upload a timeline CSV file',
+      detail: csvReady ? undefined : 'Upload a timeline CSV or Excel (.xlsx) file',
     },
     {
       label: 'Export Settings',
