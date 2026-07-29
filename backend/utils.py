@@ -95,12 +95,76 @@ def get_resolution(aspect_ratio: str, export_resolution: str) -> tuple[int, int]
 
 
 # ---------------------------------------------------------------------------
-# CSV parsing & validation
+# CSV / Excel parsing & validation
 # ---------------------------------------------------------------------------
+
+def _sniff_is_xlsx(file_path: str) -> bool:
+    """
+    Detects an Excel workbook by content (ZIP magic bytes: 'PK'), not by
+    filename extension. This matters because the frontend's own CSV
+    validation step (parseTimelineCsv) can normalize a user's uploaded
+    .xlsx into plain CSV text before it ever reaches the backend, while
+    still preserving the original .xlsx filename — extension-based
+    detection would then wrongly try to parse already-normalized CSV text
+    as a binary workbook. Sniffing the actual bytes is correct regardless
+    of what the filename claims, and also handles a raw .xlsx uploaded
+    directly against the API (bypassing the frontend).
+    """
+    try:
+        with open(file_path, "rb") as f:
+            head = f.read(2)
+        return head == b"PK"
+    except OSError:
+        return False
+
+
+def read_timeline_table(file_path: str) -> tuple["pd.DataFrame", list[str]]:
+    """
+    Reads a timestamp table from either a CSV or an Excel (.xlsx) file into
+    a DataFrame, with every cell read as a string — both the CSV and the
+    Excel branch feed the exact same downstream parsing/validation code,
+    which already operates on strings, so callers don't need to know which
+    format was uploaded.
+
+    Multi-sheet workbooks use the first sheet and return a warning; there's
+    no reliable way to know which sheet the user intended.
+    """
+    warnings: list[str] = []
+
+    if _sniff_is_xlsx(file_path):
+        xl = pd.ExcelFile(file_path, engine="openpyxl")
+        if len(xl.sheet_names) > 1:
+            warnings.append(
+                f"This workbook has {len(xl.sheet_names)} sheets "
+                f"({', '.join(xl.sheet_names)}) — only the first sheet "
+                f"(\"{xl.sheet_names[0]}\") was used."
+            )
+        df = xl.parse(sheet_name=0, dtype=str)
+    else:
+        # utf-8-sig strips a UTF-8 BOM if present (e.g. Script Timestamp's
+        # own CSV output is BOM-prefixed for Excel compatibility, and could
+        # be re-uploaded here) while behaving identically to plain utf-8
+        # for BOM-less files.
+        df = pd.read_csv(file_path, dtype=str, encoding="utf-8-sig")
+
+    return df, warnings
+
+
+def read_timeline_table_as_csv_text(file_path: str) -> tuple[str, list[str]]:
+    """
+    Same as read_timeline_table, but serialized back to CSV text — for
+    callers that feed the shared timeline_time_parser.parse_timeline_csv
+    (mirrored line-for-line in the frontend TypeScript parser). Keeping
+    that module untouched means CSV and Excel input get identical
+    validation.
+    """
+    df, warnings = read_timeline_table(file_path)
+    return df.to_csv(index=False), warnings
+
 
 def parse_and_validate_csv(csv_path: str) -> tuple[bool, list[dict], float, list[str], list[str], str]:
     """
-    Load the timestamp CSV and return (rows, warnings, errors).
+    Load the timestamp table (CSV or Excel) and return (rows, warnings, errors).
 
     Required columns: image, start, end
     Optional column:  text
@@ -110,9 +174,10 @@ def parse_and_validate_csv(csv_path: str) -> tuple[bool, list[dict], float, list
     rows: list[dict] = []
 
     try:
-        df = pd.read_csv(csv_path)
+        df, format_warnings = read_timeline_table(csv_path)
+        warnings.extend(format_warnings)
     except Exception as e:
-        errors.append(f"Failed to read CSV: {e}")
+        errors.append(f"Failed to read file: {e}")
         return False, rows, 0.0, errors, warnings, ""
 
     # Normalise column names
@@ -121,7 +186,7 @@ def parse_and_validate_csv(csv_path: str) -> tuple[bool, list[dict], float, list
     required = {"image", "start", "end"}
     missing_cols = required - set(df.columns)
     if missing_cols:
-        errors.append(f"CSV is missing required columns: {', '.join(missing_cols)}")
+        errors.append(f"File is missing required columns: {', '.join(missing_cols)}")
         return False, rows, 0.0, errors, warnings, ""
 
     if "text" not in df.columns:
@@ -129,10 +194,21 @@ def parse_and_validate_csv(csv_path: str) -> tuple[bool, list[dict], float, list
 
     for idx, row in df.iterrows():
         row_num = idx + 2  # 1-indexed, row 1 = header
+
+        # A NaN cell (blank, or the non-anchor side of a merged cell in
+        # Excel) must not be silently stringified into "image: 'nan'" or
+        # similar — reject it explicitly instead of failing confusingly
+        # deep in the video generator.
+        if pd.isna(row["image"]):
+            errors.append(f"Row {row_num}: 'image' cell is empty — check for a blank or merged cell.")
+            continue
         image_name = str(row["image"]).strip()
-        text = str(row.get("text", "")).strip()
+        text = "" if pd.isna(row.get("text", "")) else str(row.get("text", "")).strip()
 
         # Parse start time
+        if pd.isna(row["start"]):
+            errors.append(f"Row {row_num}: 'start' cell is empty — check for a blank or merged cell.")
+            continue
         try:
             start_sec = parse_time(str(row["start"]))
         except ValueError as e:
@@ -140,6 +216,9 @@ def parse_and_validate_csv(csv_path: str) -> tuple[bool, list[dict], float, list
             continue
 
         # Parse end time
+        if pd.isna(row["end"]):
+            errors.append(f"Row {row_num}: 'end' cell is empty — check for a blank or merged cell.")
+            continue
         try:
             end_sec = parse_time(str(row["end"]))
         except ValueError as e:

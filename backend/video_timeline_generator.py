@@ -199,17 +199,21 @@ def parse_timeline_csv(
     csv_path: str,
     video_map: dict[str, str],
 ) -> tuple[bool, list[dict], float, list[str], list[str], str]:
-    """Parse start,end,video CSV using shared parser."""
-    
-    with open(csv_path, newline="", encoding="utf-8-sig") as f:
-        content = f.read()
+    """Parse start,end,video CSV/Excel using shared parser."""
+
+    try:
+        from utils import read_timeline_table_as_csv_text
+    except ImportError:
+        from backend.utils import read_timeline_table_as_csv_text
+    content, format_warnings = read_timeline_table_as_csv_text(csv_path)
 
     try:
         from timeline_time_parser import parse_timeline_csv as shared_parse
     except ImportError:
         from backend.timeline_time_parser import parse_timeline_csv as shared_parse
     success, parsed_rows, total_dur, errors, warnings, norm_csv = shared_parse(content, "video")
-    
+    warnings = format_warnings + warnings
+
     if not success:
         return False, [], 0.0, errors, warnings, ""
 

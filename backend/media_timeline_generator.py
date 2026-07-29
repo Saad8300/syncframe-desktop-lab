@@ -286,14 +286,18 @@ def extract_media_zip(zip_path: str, dest_dir: str) -> dict[str, str]:
     return media_map
 
 def parse_media_csv(csv_path: str, media_map: dict[str, str]) -> tuple[bool, list[dict], float, list[str], list[str], str]:
-    with open(csv_path, newline="", encoding="utf-8-sig") as f:
-        content = f.read()
+    try:
+        from utils import read_timeline_table_as_csv_text
+    except ImportError:
+        from backend.utils import read_timeline_table_as_csv_text
+    content, format_warnings = read_timeline_table_as_csv_text(csv_path)
 
     try:
         from timeline_time_parser import parse_timeline_csv as shared_parse
     except ImportError:
         from backend.timeline_time_parser import parse_timeline_csv as shared_parse
     success, parsed_rows, total_dur, errors, warnings, norm_csv = shared_parse(content, "media")
+    warnings = format_warnings + warnings
 
     if not success:
         return False, [], 0.0, errors, warnings, ""

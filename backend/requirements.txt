@@ -9,6 +9,7 @@ requests==2.34.2
 moviepy==1.0.3
 pillow
 pandas
+openpyxl
 numpy
 imageio
 imageio-ffmpeg
