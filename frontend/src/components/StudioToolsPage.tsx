@@ -130,7 +130,7 @@ const ACTIVE_TOOLS: {
     id: 'text_to_speech',
     icon: <IconMusic size={22} />,
     title: 'Text to Speech',
-    desc: 'Turn text into natural speech with offline AI voices in many languages.',
+    desc: 'Turn text into natural speech — offline local voices or online cloud voices, many languages.',
     accentColor: '#14b8a6',
   },
   {

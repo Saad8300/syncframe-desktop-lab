@@ -29,7 +29,7 @@ export default function LandingPage({ onEnterStudio, onViewTools }: LandingPageP
         
         {/* Chips */}
         <div className="flex flex-wrap items-center justify-center gap-2 mb-8 max-w-2xl animate-fade-in-up">
-          {['Local Processing', 'Timeline Tools', 'Audio Tools', 'Script Timestamp', 'No Cloud Upload'].map(chip => (
+          {['Local Processing', 'Timeline Tools', 'Audio Tools', 'Script Timestamp', 'Text to Speech'].map(chip => (
             <span key={chip} className="px-3 py-1.5 rounded-full text-[10px] font-bold tracking-widest uppercase transition-colors"
                   style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}>
               {chip}

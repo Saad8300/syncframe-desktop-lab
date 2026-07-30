@@ -158,7 +158,7 @@ export default function StudioHelpPage() {
         <div className="flex-1">
           <p className="text-sm font-bold" style={{ color: 'var(--accent-primary)' }}>Quick Reference</p>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-            SyncFrame Studio runs 100% locally. The backend must be running (green status in sidebar) before you generate anything. No cloud, no login, no fees.
+            SyncFrame Studio runs locally on your machine. The backend must be running (green status in sidebar) before you generate anything. Video, timeline, and local-voice tools work fully offline; the optional Cloud voices in Text to Speech send only your text to Microsoft's speech service.
           </p>
         </div>
       </div>
@@ -173,7 +173,7 @@ export default function StudioHelpPage() {
             <Step n={2}>Click <strong>Tools</strong> in the sidebar and select a tool (e.g. <strong>Image Timeline</strong>).</Step>
             <Step n={3}>Upload the required files — audio file, images ZIP, and a timestamp CSV.</Step>
             <Step n={4}>Configure your settings: Aspect Ratio, Resolution, Output filename, transitions, etc.</Step>
-            <Step n={5}>Click <strong>Generate</strong>. The process runs locally on your Mac or PC — no internet required.</Step>
+            <Step n={5}>Click <strong>Generate</strong>. Video and timeline rendering runs locally on your Mac or PC — no internet required.</Step>
             <Step n={6}>When done, use <strong>Download</strong> in the results panel to save your export.</Step>
             <Step n={7}>Your export appears in <strong>History</strong> for future reference.</Step>
           </div>
@@ -307,9 +307,9 @@ export default function StudioHelpPage() {
             <div className="p-4 rounded-xl flex gap-3" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
               <span className="text-2xl">🖥️</span>
               <div>
-                <p className="text-xs font-bold mb-1" style={{ color: 'var(--text-primary)' }}>100% Local — No Cloud Required</p>
+                <p className="text-xs font-bold mb-1" style={{ color: 'var(--text-primary)' }}>Local First — Cloud Optional</p>
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  Everything runs on your own machine. No files are uploaded to any server. No internet connection is needed for generating exports.
+                  Video rendering, timeline tools, Script Timestamp, and Local text-to-speech voices all run on your own machine — your media files are never uploaded. The only optional online features are Cloud voices and Auto-Translate in Text to Speech, which send just your text to an online service.
                 </p>
               </div>
             </div>
@@ -406,7 +406,7 @@ export default function StudioHelpPage() {
       {/* Footer note */}
       <div className="text-center py-4">
         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          SyncFrame Studio — fully local, no cloud required. Refer to the <strong>README.md</strong> in the project folder for detailed setup instructions.
+          SyncFrame Studio — local-first; the only optional online features are Cloud voices and Auto-Translate in Text to Speech. Refer to the <strong>README.md</strong> in the project folder for detailed setup instructions.
         </p>
       </div>
 
