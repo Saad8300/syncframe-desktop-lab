@@ -15,7 +15,7 @@ THE CASE THIS EXISTS FOR
 ------------------------
 A plain number in a time-formatted Excel cell. `0.5` meaning half a second
 displays as "12:00:00", and reading display strings parsed it as 43,200
-seconds — wrong by 86,400x, and it "succeeded", so nothing surfaced the
+seconds - wrong by 86,400x, and it "succeeded", so nothing surfaced the
 error. That case is asserted explicitly below and must never regress.
 
 Requires node and the frontend's node_modules (esbuild + xlsx). When those
@@ -24,6 +24,7 @@ frontend — the check SKIPS loudly with exit 0 rather than failing the build
 for a toolchain reason. A real divergence always exits 1.
 """
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -67,10 +68,47 @@ AMBIGUOUS_CASES = [
 
 AMBIGUOUS_MARKER = "\u0000AMBIGUOUS_TIME"
 
+# A single Node driver that bundles the TypeScript reader and runs cellToText
+# over the supplied cells.
+#
+# It deliberately drives esbuild through its JavaScript API rather than the
+# node_modules/.bin/esbuild shim. That shim is not portable: on macOS/Linux it
+# is a native binary, and on Windows npm writes a .cmd batch wrapper that
+# CreateProcess cannot execute, which produced
+#   OSError: [WinError 193] %1 is not a valid Win32 application
+# on the first real Windows build. esbuild's JS API locates the correct
+# platform binary itself, so the only executable Python ever spawns is `node`,
+# which is a real .exe on Windows and a real binary elsewhere.
 RUNNER = """
-import { cellToText } from %(mod)s
-const cases = JSON.parse(process.argv[2])
-console.log(JSON.stringify(cases.map(c => cellToText(c))))
+const path = require('path');
+const os = require('os');
+const fs = require('fs');
+const esbuild = require('esbuild');
+
+const modPath = process.argv[2];
+const cases = JSON.parse(process.argv[3]);
+
+const outfile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tlparity-')), 'bundle.cjs');
+const entry = path.join(path.dirname(outfile), 'entry.ts');
+// Single line on purpose: no escape sequences to survive being written
+// through Python, and none are needed.
+fs.writeFileSync(entry, [
+  'import { cellToText } from ' + JSON.stringify(modPath) + ';',
+  'module.exports = { cellToText };',
+].join(String.fromCharCode(10)));
+
+esbuild.buildSync({
+  entryPoints: [entry],
+  bundle: true,
+  platform: 'node',
+  format: 'cjs',
+  logLevel: 'error',
+  absWorkingDir: __dirname,
+  outfile,
+});
+
+const { cellToText } = require(outfile);
+console.log(JSON.stringify(cases.map(c => cellToText(c))));
 """
 
 
@@ -78,34 +116,46 @@ def prerequisites_missing() -> str:
     """Return a reason string if the check cannot run here, else ""."""
     if shutil.which("node") is None:
         return "node is not installed or not on PATH"
-    esbuild = FRONTEND / "node_modules" / ".bin" / "esbuild"
-    if not esbuild.exists():
-        return f"{esbuild.relative_to(ROOT)} not found (run npm install in frontend/)"
+    # Check the packages themselves, not node_modules/.bin. The .bin entries
+    # are platform-specific shims (native binary on macOS/Linux, .cmd wrapper
+    # on Windows) and this script no longer touches them.
+    if not (FRONTEND / "node_modules" / "esbuild" / "lib" / "main.js").exists():
+        return "frontend/node_modules/esbuild not found (run npm install in frontend/)"
     if not (FRONTEND / "node_modules" / "xlsx").exists():
         return "frontend/node_modules/xlsx not found (run npm install in frontend/)"
     return ""
 
 
 def xlsx_cell_texts(cells):
-    """Run the real TypeScript cellToText over each cell object via esbuild."""
+    """Run the real TypeScript cellToText over each cell object."""
+    node = shutil.which("node")
     mod = (FRONTEND / "src" / "utils" / "timelineFileReader.ts").as_posix()
-    with tempfile.TemporaryDirectory() as td:
-        entry = Path(td) / "entry.ts"
-        entry.write_text(RUNNER % {"mod": json.dumps(mod)}, encoding="utf-8")
-        out = Path(td) / "bundle.cjs"
-        build = subprocess.run(
-            [str(FRONTEND / "node_modules" / ".bin" / "esbuild"), str(entry),
-             "--bundle", "--platform=node", "--format=cjs", "--log-level=error",
-             f"--outfile={out}"],
-            cwd=FRONTEND, capture_output=True, text=True,
+
+    # Normally `node` resolves to node.exe on Windows and a real binary
+    # elsewhere, both directly executable. A few Windows version managers
+    # install it as a .cmd shim, which CreateProcess cannot run - the same
+    # WinError 193 that the .bin/esbuild shim caused. Route those through the
+    # command interpreter. subprocess quotes list arguments itself, which
+    # matters here because the repo path can contain spaces.
+    prefix = []
+    if os.name == "nt" and Path(node).suffix.lower() in (".cmd", ".bat"):
+        prefix = [os.environ.get("COMSPEC", "cmd.exe"), "/c"]
+
+    # The driver lives under frontend/node_modules/.cache so Node's module
+    # resolution walks up and finds esbuild and xlsx (a driver in the system
+    # temp dir would not resolve them), and so a crash cannot leave a stray
+    # directory in frontend/ that shows up in git status.
+    cache = FRONTEND / "node_modules" / ".cache"
+    cache.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=cache) as td:
+        driver = Path(td) / "parity_driver.cjs"
+        driver.write_text(RUNNER, encoding="utf-8")
+        run = subprocess.run(
+            prefix + [node, str(driver), mod, json.dumps(cells)],
+            cwd=str(FRONTEND), capture_output=True, text=True,
         )
-        if build.returncode != 0:
-            print("esbuild failed:\n" + build.stderr)
-            sys.exit(2)
-        run = subprocess.run(["node", str(out), json.dumps(cells)],
-                             cwd=FRONTEND, capture_output=True, text=True)
         if run.returncode != 0:
-            print("node failed:\n" + run.stderr)
+            print("node driver failed:\n" + (run.stderr or run.stdout))
             sys.exit(2)
         return json.loads(run.stdout)
 
@@ -126,7 +176,7 @@ def main():
     amb_texts = xlsx_cell_texts([c[1] for c in AMBIGUOUS_CASES])
     failures = []
 
-    print("PARITY — every format the CSV path accepts must parse identically from XLSX")
+    print("PARITY - every format the CSV path accepts must parse identically from XLSX")
     print(f"{'case':24} {'CSV':10} -> {'sec':>9}  | {'XLSX text':12} -> {'sec':>9}  verdict")
     print("-" * 92)
     for (label, _cell, csv_text, expected), xlsx_text in zip(CASES, texts):
@@ -141,7 +191,7 @@ def main():
               f"{'match' if ok else '*** DIVERGES ***'}")
 
     print()
-    print("REFUSAL — ambiguous time-formatted numeric cells must never be guessed at")
+    print("REFUSAL - ambiguous time-formatted numeric cells must never be guessed at")
     print("-" * 92)
     for (label, _cell), text in zip(AMBIGUOUS_CASES, amb_texts):
         refused = text == AMBIGUOUS_MARKER
@@ -165,7 +215,7 @@ def main():
               "not silently turned into 43,200s.")
 
     if failures:
-        print(f"\nFAILED: {len(failures)} case(s) — {', '.join(failures)}")
+        print(f"\nFAILED: {len(failures)} case(s) - {', '.join(failures)}")
         return 1
     print(f"\nAll {len(CASES)} parity cases match and all "
           f"{len(AMBIGUOUS_CASES)} ambiguous cases are refused.")
