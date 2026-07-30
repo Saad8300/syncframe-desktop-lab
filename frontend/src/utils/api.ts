@@ -584,12 +584,15 @@ export async function createAudioMergerBatchJob(
 }
 
 // ---------------------------------------------------------------------------
-// Text to Speech (Piper — local, offline)
+// Text to Speech (Local Piper offline + Cloud edge-tts online)
 // ---------------------------------------------------------------------------
 
 export interface TtsVoice {
   id: string
+  engine: 'piper' | 'edge'
+  engine_label: 'Local' | 'Cloud'
   name: string
+  gender: 'Male' | 'Female' | 'Unspecified'
   language_code: string
   language: string
   language_native: string
@@ -598,16 +601,51 @@ export interface TtsVoice {
   num_speakers: number
   size_bytes: number
   downloaded: boolean
+  requires_internet: boolean
 }
 
-export async function getTtsVoices(): Promise<TtsVoice[]> {
+export interface TtsCatalog {
+  voices: TtsVoice[]
+  cloud_available: boolean
+  short_form_max_chars: number
+  long_form_max_chars: number
+  chars_per_second: number
+  translation_chars_per_credit: number
+}
+
+export async function getTtsVoices(): Promise<TtsCatalog> {
   const res = await fetch(apiUrl('/api/tts/voices'))
   if (!res.ok) {
     const text = await res.text()
     throw new Error(parseErrorResponse(res.status, text))
   }
-  const data = await res.json()
-  return data.voices as TtsVoice[]
+  return res.json() as Promise<TtsCatalog>
+}
+
+export interface TtsLanguageCheck {
+  detected_language: string
+  voice_language: string
+  mismatch: boolean
+}
+
+/** Detects whether the script's language differs from the voice's language. */
+export async function detectTtsLanguage(text: string, voiceId: string): Promise<TtsLanguageCheck> {
+  const res = await fetch(apiUrl('/api/tts/detect-language'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, voice_id: voiceId }),
+  })
+  if (!res.ok) {
+    const text2 = await res.text()
+    throw new Error(parseErrorResponse(res.status, text2))
+  }
+  return res.json() as Promise<TtsLanguageCheck>
+}
+
+export interface TtsJobOptions {
+  outputFormat?: 'wav' | 'mp3'
+  mode?: 'short_form' | 'long_form'
+  autoTranslate?: boolean
 }
 
 export async function startTextToSpeechJob(
@@ -616,12 +654,16 @@ export async function startTextToSpeechJob(
   speed: number,
   outputName: string,
   creditCost?: number,
+  options: TtsJobOptions = {},
 ): Promise<{ job_id: string }> {
   const form = new FormData()
   form.append('text', text)
   form.append('voice_id', voiceId)
   form.append('speed', String(speed))
   form.append('output_name', outputName || 'speech')
+  form.append('output_format', options.outputFormat || 'wav')
+  form.append('mode', options.mode || 'short_form')
+  form.append('auto_translate', options.autoTranslate ? 'true' : 'false')
   if (creditCost !== undefined) form.append('credit_cost', String(creditCost))
 
   const res = await fetch(apiUrl('/api/jobs/start-text-to-speech'), {
@@ -647,13 +689,17 @@ export async function createTextToSpeechBatchJob(
   voiceId: string,
   speed: number,
   outputName: string,
-  credit: { cjid?: string | null, credit_cost?: number, credit_reserved?: boolean, credit_tool_name?: string, duration_seconds?: number } = {}
+  credit: { cjid?: string | null, credit_cost?: number, credit_reserved?: boolean, credit_tool_name?: string, duration_seconds?: number } = {},
+  options: TtsJobOptions = {},
 ): Promise<{ job: BatchJob }> {
   const form = new FormData()
   form.append('text', text)
   form.append('voice_id', voiceId)
   form.append('speed', String(speed))
   form.append('output_name', outputName || 'speech')
+  form.append('output_format', options.outputFormat || 'wav')
+  form.append('mode', options.mode || 'short_form')
+  form.append('auto_translate', options.autoTranslate ? 'true' : 'false')
 
   if (credit.cjid) form.append('cjid', credit.cjid)
   if (credit.credit_cost !== undefined) form.append('credit_cost', String(credit.credit_cost))
