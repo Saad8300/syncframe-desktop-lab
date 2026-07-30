@@ -30,6 +30,23 @@ export function classifyReservationError(err: any): { type: 'plan_limit' | 'insu
   return { type: 'unknown', message: msg };
 }
 
+/** Mirrors credit_estimator.py — must stay in step with it. */
+export const TTS_TRANSLATION_CHARS_PER_CREDIT = 1000
+
+/**
+ * Used only when the backend estimate call fails. It previously ignored
+ * translate_chars, so a network hiccup silently dropped the Auto-Translate
+ * surcharge from the number shown to the user — under-quoting the cost right
+ * before they committed to the job.
+ */
+function offlineEstimate(dur: number, numVideos: number, translateChars: number): number {
+  const base = Math.max(1, Math.ceil(dur / 60)) * 5 * numVideos
+  const surcharge = translateChars > 0
+    ? Math.max(1, Math.ceil(translateChars / TTS_TRANSLATION_CHARS_PER_CREDIT))
+    : 0
+  return base + surcharge
+}
+
 export async function estimateCredits(tool: string, options: any): Promise<number> {
   const dur = Math.max(1, Math.ceil(Number(options.duration_seconds) || 60))
   const num_videos = options.num_videos || 1
@@ -53,14 +70,14 @@ export async function estimateCredits(tool: string, options: any): Promise<numbe
 
     if (!res.ok) {
       console.warn('Backend estimation failed, falling back.')
-      return Math.max(1, Math.ceil(dur / 60)) * 5 * num_videos
+      return offlineEstimate(dur, num_videos, options.translate_chars || 0)
     }
 
     const data = await res.json()
     return data.required_credits
   } catch (err) {
     console.error('Failed to estimate credits:', err)
-    return Math.max(1, Math.ceil(dur / 60)) * 5 * num_videos
+    return offlineEstimate(dur, num_videos, options.translate_chars || 0)
   }
 }
 
