@@ -87,6 +87,13 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
+      // Chromium throttles setInterval in windows that are minimised or
+      // occluded, and after ~5 minutes hidden it drops timers to once per
+      // minute. Batch renders run for many minutes and users routinely
+      // switch away while they wait, which froze the Batch Video Generator's
+      // live status until a manual refresh. Progress polling has to keep
+      // running while the window is in the background.
+      backgroundThrottling: false,
       preload: path.join(__dirname, 'preload.js')
     }
   });

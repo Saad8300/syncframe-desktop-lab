@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useAuth } from '../auth/AuthProvider'
 import StudioPageHeader from './StudioPageHeader'
@@ -129,27 +129,71 @@ export default function BatchVideoGeneratorPage() {
   const [limitModalReason, setLimitModalReason] = useState('')
   const [limitModalRequiredPlan, setLimitModalRequiredPlan] = useState<string | undefined>(undefined)
 
-  const loadData = async () => {
-    try {
-      const [j, s, st] = await Promise.all([getBatchJobs(), getBatchStats(), getBatchState()])
-      setJobs(j)
-      setStats(s)
-      setBatchState(st)
-      setError(null)
-    } catch (err) {
-      setError(String(err))
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  // Settle the three reads independently. Previously a single transient
+  // failure rejected Promise.all, set `error`, and the early return below
+  // replaced the whole page with an error screen — losing the live queue
+  // view over one blip. Now each slice updates on its own and a failure
+  // only downgrades to a banner while the last known data stays on screen.
+  const loadData = useCallback(async () => {
+    const [jobsRes, statsRes, stateRes] = await Promise.allSettled([
+      getBatchJobs(), getBatchStats(), getBatchState()
+    ])
+
+    if (jobsRes.status === 'fulfilled') setJobs(jobsRes.value)
+    if (statsRes.status === 'fulfilled') setStats(statsRes.value)
+    if (stateRes.status === 'fulfilled') setBatchState(stateRes.value)
+
+    const failure = [jobsRes, statsRes, stateRes].find(r => r.status === 'rejected')
+    setError(failure ? String((failure as PromiseRejectedResult).reason) : null)
+    setIsLoading(false)
+  }, [])
+
+  // Poll on a self-rescheduling timer rather than a fixed setInterval whose
+  // period is derived from the very state it sets. `loadDataRef` keeps the
+  // scheduler from tearing down and rebuilding on every tick, and reading
+  // the cadence from a ref means a queue that starts or finishes takes
+  // effect on the next tick instead of waiting out a stale interval.
+  const loadDataRef = useRef(loadData)
+  loadDataRef.current = loadData
+
+  const isRunningRef = useRef(false)
+  isRunningRef.current = !!batchState?.is_running
 
   useEffect(() => {
-    loadData()
-    const interval = setInterval(() => {
-      loadData()
-    }, batchState?.is_running ? 2000 : 8000)
-    return () => clearInterval(interval)
-  }, [batchState?.is_running])
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    const tick = async () => {
+      if (cancelled) return
+      await loadDataRef.current()
+      if (cancelled) return
+      // 1.5s while the queue is working, backing off to 10s when idle so an
+      // open-but-unused page isn't hammering the backend.
+      timer = setTimeout(tick, isRunningRef.current ? 1500 : 10000)
+    }
+
+    tick()
+
+    // Even with backgroundThrottling disabled in the Electron shell, a
+    // suspended/occluded window can miss ticks. Re-sync the moment the page
+    // becomes visible or regains focus so the user never returns to a
+    // stale display.
+    const resync = () => {
+      if (cancelled || document.visibilityState === 'hidden') return
+      if (timer) clearTimeout(timer)
+      tick()
+    }
+
+    document.addEventListener('visibilitychange', resync)
+    window.addEventListener('focus', resync)
+
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+      document.removeEventListener('visibilitychange', resync)
+      window.removeEventListener('focus', resync)
+    }
+  }, [])
 
   const requireConfirm = (title: string, msg: string, action: () => void) => {
     setConfirmAction({ title, msg, action })
@@ -244,7 +288,10 @@ export default function BatchVideoGeneratorPage() {
     )
   }
 
-  if (error) {
+  // Only take over the page when there is genuinely nothing to show. Once
+  // any data has loaded, a failed poll is reported by the banner below so
+  // the live queue view survives a transient backend hiccup.
+  if (error && jobs.length === 0 && !batchState) {
     return (
       <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-8 pb-12">
         <StudioPageHeader icon={<IconFilm size={16} />} title="Batch Video Generator" />
@@ -287,6 +334,15 @@ export default function BatchVideoGeneratorPage() {
       </div>
 
       <div className="space-y-6 flex-1 flex flex-col">
+        {/* Non-destructive: the queue below stays visible and keeps polling. */}
+        {error && (
+          <div className="flex items-start gap-2 px-4 py-3 rounded-xl border text-xs"
+               style={{ background: 'var(--color-error-bg)', borderColor: 'var(--color-error-border)', color: 'var(--color-error)' }}>
+            <IconAlertCircle size={14} className="mt-0.5 shrink-0" />
+            <span><span className="font-bold">Live updates interrupted.</span> Showing the last known state — retrying automatically. ({error})</span>
+          </div>
+        )}
+
         {/* ── STATS DASHBOARD ── */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           <StatCard title="Total Jobs" value={stats.total} color="var(--text-primary)" icon={<IconFilm size={18}/>} />
