@@ -6,6 +6,7 @@ import {
   IconCheck,
   IconAlertTriangle,
   IconDownload,
+  IconZap,
 } from './icons'
 import { useAuth } from '../auth/AuthProvider'
 import StudioPageHeader from './StudioPageHeader'
@@ -187,6 +188,13 @@ export default function TextToSpeechPage() {
 
   const willTranslate = Boolean(autoTranslate && langCheck?.mismatch)
 
+  // Uses the server-supplied rate (already loaded with the catalog) rather
+  // than a second hardcoded copy, so the breakdown lines always add up to the
+  // single total the estimate endpoint returned.
+  const translateSurcharge = willTranslate
+    ? Math.max(1, Math.ceil(charCount / translateCharsPerCredit))
+    : 0
+
   // ── Live credit estimate (debounced, same call used for the real charge) ──
   useEffect(() => {
     let cancelled = false
@@ -205,6 +213,15 @@ export default function TextToSpeechPage() {
   }, [charCount, estDurationSeconds, willTranslate, overLimit])
 
   const canGenerate = !!text.trim() && !!voiceId && status !== 'generating' && !overLimit
+
+  /**
+   * Cost suffix shown on the action buttons. The estimate strip sits above
+   * them, but at the moment of clicking, the price should be on the control
+   * being clicked — not 60-125px away in small type.
+   */
+  const costSuffix = (!canGenerate || estimating || liveCredits === null)
+    ? ''
+    : ` · ${liveCredits.toLocaleString()} credit${liveCredits === 1 ? '' : 's'}`
 
   /** Shared credit gate. Returns the estimate actually used for the charge. */
   const runCreditGate = async (isBatch: boolean) => {
@@ -616,17 +633,55 @@ export default function TextToSpeechPage() {
           {/* Live estimate + actions */}
           <div className="card p-5">
             {charCount > 0 && !overLimit && (
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                {[
-                  ['Characters', charCount.toLocaleString()],
-                  ['Est. duration', formatDuration(estDurationSeconds)],
-                  ['Est. credits', estimating ? '…' : (liveCredits !== null ? String(liveCredits) : '—')],
-                ].map(([label, value]) => (
-                  <div key={label} className="rounded-lg p-2.5 text-center" style={{ background: 'var(--bg-elevated)' }}>
-                    <p className="text-[9px] uppercase tracking-wider mb-0.5 opacity-70" style={{ color: 'var(--text-muted)' }}>{label}</p>
-                    <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{value}</p>
+              <div className="mb-4 space-y-2">
+                <div className="grid grid-cols-3 gap-2">
+                  {/* Two informational tiles, deliberately quieter than the cost. */}
+                  {[
+                    ['Characters', charCount.toLocaleString()],
+                    ['Est. duration', formatDuration(estDurationSeconds)],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-lg p-2.5 text-center" style={{ background: 'var(--bg-elevated)' }}>
+                      <p className="text-[10px] uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-muted)' }}>{label}</p>
+                      <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{value}</p>
+                    </div>
+                  ))}
+
+                  {/* The one number that costs money gets its own treatment. */}
+                  <div
+                    className="rounded-lg p-2.5 text-center transition-colors duration-200"
+                    style={{
+                      background: 'var(--accent-subtle)',
+                      border: '1px solid var(--accent-border)',
+                    }}
+                  >
+                    <p className="text-[10px] uppercase tracking-wider mb-0.5 font-semibold flex items-center justify-center gap-1"
+                       style={{ color: 'var(--accent-primary)' }}>
+                      <IconZap size={11} /> Est. credits
+                    </p>
+                    <p className="text-lg font-extrabold leading-tight" style={{ color: 'var(--accent-primary)' }}>
+                      {estimating ? '…' : (liveCredits !== null ? liveCredits.toLocaleString() : '—')}
+                    </p>
                   </div>
-                ))}
+                </div>
+
+                {/* Surcharge shown as its own line item rather than folded into
+                    a single number the user can't decompose. */}
+                {willTranslate && liveCredits !== null && !estimating && (
+                  <div className="flex items-center justify-between rounded-lg px-3 py-2 text-[11px]"
+                       style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
+                    <span>Speech ({formatDuration(estDurationSeconds)})</span>
+                    <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      {Math.max(0, liveCredits - translateSurcharge).toLocaleString()}
+                    </span>
+                  </div>
+                )}
+                {willTranslate && liveCredits !== null && !estimating && (
+                  <div className="flex items-center justify-between rounded-lg px-3 py-2 text-[11px]"
+                       style={{ background: 'var(--accent-subtle)', color: 'var(--accent-primary)' }}>
+                    <span>+ Auto-Translate ({charCount.toLocaleString()} chars)</span>
+                    <span className="font-bold">+{translateSurcharge.toLocaleString()}</span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -645,7 +700,7 @@ export default function TextToSpeechPage() {
             >
               {status === 'generating'
                 ? <><IconLoader size={18} className="animate-spin" /> {statusMsg || 'Generating…'}</>
-                : <><IconMusic size={18} /> Generate {mode === 'long_form' ? 'Long Form' : 'Speech'}</>}
+                : <><IconMusic size={18} /> Generate {mode === 'long_form' ? 'Long Form' : 'Speech'}{costSuffix}</>}
             </button>
 
             {status === 'generating' && (
@@ -670,7 +725,7 @@ export default function TextToSpeechPage() {
             >
               {isAddingToQueue
                 ? <><IconLoader size={16} className="animate-spin" /> Adding…</>
-                : <><IconMusic size={16} /> Add to Batch Queue</>}
+                : <><IconMusic size={16} /> Add to Batch Queue{costSuffix}</>}
             </button>
 
             {successQueueMsg && (
