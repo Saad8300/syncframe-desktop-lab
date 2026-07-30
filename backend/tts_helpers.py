@@ -19,6 +19,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import wave
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -386,17 +387,23 @@ def _audio_duration(path: str) -> float:
 # Text chunking for Long Form
 # ---------------------------------------------------------------------------
 
-def chunk_text(text: str, max_size: int) -> List[str]:
+def chunk_text(text: str, max_size: int, measure=len) -> List[str]:
     """
-    Split long text into chunks under max_size characters, preferring natural
-    boundaries in descending order: paragraph -> sentence -> clause -> word.
+    Split long text into chunks under max_size, preferring natural boundaries
+    in descending order: paragraph -> sentence -> clause -> word.
     Sentence/clause patterns include CJK and Arabic punctuation so non-Latin
     scripts don't fall through to word-level splitting.
+
+    `measure` decides what max_size counts. It defaults to len() (characters),
+    which is what TTS synthesis wants since chunk length maps to audio length.
+    Translation passes a byte-measuring function instead: the endpoint's real
+    limit is on encoded payload size, and a character budget silently doubles
+    the payload for two-byte scripts like Arabic.
     """
     text = (text or "").replace("\r\n", "\n").strip()
     if not text:
         return []
-    if len(text) <= max_size:
+    if measure(text) <= max_size:
         return [text]
 
     def split_keep(units: List[str]) -> List[str]:
@@ -405,7 +412,7 @@ def chunk_text(text: str, max_size: int) -> List[str]:
         cur = ""
         for u in units:
             candidate = (cur + " " + u).strip() if cur else u
-            if len(candidate) <= max_size:
+            if measure(candidate) <= max_size:
                 cur = candidate
             else:
                 if cur:
@@ -416,7 +423,7 @@ def chunk_text(text: str, max_size: int) -> List[str]:
         return out
 
     def refine(segment: str, level: int) -> List[str]:
-        if len(segment) <= max_size:
+        if measure(segment) <= max_size:
             return [segment]
         if level == 0:
             units = [p for p in re.split(r"\n{2,}", segment) if p.strip()]
@@ -429,15 +436,27 @@ def chunk_text(text: str, max_size: int) -> List[str]:
         elif level == 4:
             units = segment.split(" ")
         else:
-            # Hard cut — a single "word" longer than max_size (e.g. a URL).
-            return [segment[i:i + max_size] for i in range(0, len(segment), max_size)]
+            # Hard cut — a single "word" over budget (e.g. a URL). Step by
+            # characters but re-check with `measure`, so a multi-byte script
+            # still lands under a byte budget.
+            out: List[str] = []
+            cur = ""
+            for ch in segment:
+                if cur and measure(cur + ch) > max_size:
+                    out.append(cur)
+                    cur = ch
+                else:
+                    cur += ch
+            if cur:
+                out.append(cur)
+            return out
 
         if len(units) <= 1:
             return refine(segment, level + 1)
 
         result: List[str] = []
         for packed in split_keep(units):
-            if len(packed) > max_size:
+            if measure(packed) > max_size:
                 result.extend(refine(packed, level + 1))
             else:
                 result.append(packed)
@@ -449,6 +468,21 @@ def chunk_text(text: str, max_size: int) -> List[str]:
 # ---------------------------------------------------------------------------
 # Translation (deep-translator -> Google's free endpoint)
 # ---------------------------------------------------------------------------
+
+# Budgeting translation chunks by CHARACTER count was the cause of a hard
+# failure on Arabic: the endpoint's real limit is on encoded payload size, and
+# Arabic is two UTF-8 bytes per character, so a 4,500-character chunk was
+# ~8,200 bytes and rejected every time. Measured working ceilings were ~3,100
+# characters for Arabic vs ~4,980 for English — the same byte range. Budgeting
+# by bytes makes the limit script-independent.
+TRANSLATE_MAX_CHUNK_BYTES = 3000
+TRANSLATE_MAX_RETRIES = 3
+TRANSLATE_BACKOFF_BASE = 0.6      # seconds; doubles each retry
+TRANSLATE_MAX_SPLIT_DEPTH = 4     # adaptive halving before giving up
+
+
+def _byte_len(s: str) -> int:
+    return len(s.encode("utf-8"))
 
 def detect_language(text: str) -> str:
     """
@@ -495,13 +529,45 @@ def translate_text(text: str, target_lang: str) -> str:
     except Exception as e:
         raise RuntimeError(f"Translation library unavailable: {e}")
 
-    # The endpoint rejects very long payloads; translate per chunk and rejoin.
-    pieces = chunk_text(clean, 4500) or [clean]
+    translator = GoogleTranslator(source="auto", target=target_lang)
+
+    def _translate_once(piece: str) -> str:
+        """One call with retry-and-backoff for genuine transient failures."""
+        last: Optional[Exception] = None
+        for attempt in range(TRANSLATE_MAX_RETRIES):
+            try:
+                return translator.translate(piece) or ""
+            except Exception as e:  # noqa: BLE001 - library raises bare types
+                last = e
+                if attempt < TRANSLATE_MAX_RETRIES - 1:
+                    time.sleep(TRANSLATE_BACKOFF_BASE * (2 ** attempt))
+        raise last if last else RuntimeError("Translation failed.")
+
+    def _translate_adaptive(piece: str, depth: int = 0) -> str:
+        """
+        Translate one chunk, halving and retrying if it still fails.
+
+        The byte budget below is deliberately conservative rather than tuned to
+        the endpoint's exact (undocumented, unversioned) limit. If a chunk is
+        still rejected — because the limit moved, or a script encodes even
+        heavier than expected — splitting and retrying self-corrects without
+        anyone having to guess a new magic number.
+        """
+        try:
+            return _translate_once(piece)
+        except Exception:
+            if depth >= TRANSLATE_MAX_SPLIT_DEPTH or len(piece) < 40:
+                raise
+            halves = chunk_text(piece, max(1, _byte_len(piece) // 2), measure=_byte_len)
+            if len(halves) < 2:
+                raise
+            return " ".join(_translate_adaptive(h, depth + 1) for h in halves if h.strip())
+
+    pieces = chunk_text(clean, TRANSLATE_MAX_CHUNK_BYTES, measure=_byte_len) or [clean]
     out: List[str] = []
     try:
-        translator = GoogleTranslator(source="auto", target=target_lang)
         for p in pieces:
-            out.append(translator.translate(p) or "")
+            out.append(_translate_adaptive(p))
     except Exception as e:
         raise RuntimeError(
             "Translation failed. This uses a free public translation service "
