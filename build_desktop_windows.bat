@@ -51,8 +51,23 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-:: 2. Build Backend
-echo [INFO] Step 2: Building Backend...
+:: 2. Verify Excel timeline uploads still parse identically to CSV
+:: Guards a defect that was silent rather than loud: a plain number in a
+:: time-formatted Excel cell read 0.5 seconds as 43,200 (86,400x wrong) and
+:: reported success. The check bundles the real TypeScript reader and parses
+:: its output with the real Python parser, so it covers the actual data flow.
+echo [INFO] Step 2: Verifying Excel/CSV timeline parity...
+backend\.venv\Scripts\python.exe scripts\check_timeline_excel_parity.py
+if %errorlevel% neq 0 (
+    echo.
+    echo [ERROR] Excel timeline uploads no longer parse identically to CSV.
+    echo         See the case table above for which inputs diverged.
+    pause
+    exit /b 1
+)
+
+:: 3. Build Backend
+echo [INFO] Step 3: Building Backend...
 call backend\build_backend_windows.bat
 if %errorlevel% neq 0 (
     echo [ERROR] Backend build script failed.
@@ -60,8 +75,8 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-:: 3. Build Frontend and Desktop App
-echo [INFO] Step 3: Building Desktop App (and Frontend)...
+:: 4. Build Frontend and Desktop App
+echo [INFO] Step 4: Building Desktop App (and Frontend)...
 cd /d "%~dp0"
 cd /d "%~dp0desktop"
 call npm run build:win

@@ -62,6 +62,20 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Guards a defect that was silent rather than loud: a plain number in a
+# time-formatted Excel cell read 0.5 seconds as 43,200 (86,400x wrong) and
+# reported success. Skips with a notice if node/frontend node_modules are
+# absent, so a backend-only build on a machine without the frontend installed
+# is not blocked for a toolchain reason.
+info "Verifying Excel/CSV timeline parity..."
+python "$PROJECT_ROOT/scripts/check_timeline_excel_parity.py"
+
+if [ $? -ne 0 ]; then
+    error "Excel timeline uploads no longer parse identically to CSV."
+    error "See the case table above for which inputs diverged."
+    exit 1
+fi
+
 info "Generating Supabase config from frontend/.env.local..."
 python generate_supabase_config.py
 

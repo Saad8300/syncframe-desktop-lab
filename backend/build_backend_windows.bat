@@ -42,6 +42,20 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+:: Guards a defect that was silent rather than loud: a plain number in a
+:: time-formatted Excel cell read 0.5 seconds as 43,200 (86,400x wrong) and
+:: reported success. Skips with a notice if node/frontend node_modules are
+:: absent, so a backend-only build on a machine without the frontend
+:: installed is not blocked for a toolchain reason.
+echo [INFO] Verifying Excel/CSV timeline parity...
+python "%~dp0..\scripts\check_timeline_excel_parity.py"
+if %errorlevel% neq 0 (
+    echo.
+    echo [ERROR] Excel timeline uploads no longer parse identically to CSV.
+    echo         See the case table above for which inputs diverged.
+    exit /b 1
+)
+
 echo [INFO] Generating Supabase config from frontend\.env.local...
 python generate_supabase_config.py
 if %errorlevel% neq 0 (
