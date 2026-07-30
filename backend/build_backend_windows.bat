@@ -27,6 +27,21 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+:: The Python renderer and the TypeScript Studio preview are both generated
+:: from shared\caption_presets.json. If either generated file is stale, the
+:: preview silently disagrees with the actual render — so fail the build here
+:: rather than ship a mismatch.
+echo [INFO] Verifying generated caption presets are in sync...
+python "%~dp0..\scripts\generate_caption_presets.py" --check
+if %errorlevel% neq 0 (
+    echo.
+    echo [ERROR] Generated caption presets are out of sync with
+    echo         shared\caption_presets.json.
+    echo         Run: python scripts\generate_caption_presets.py
+    echo         then commit the regenerated files and build again.
+    exit /b 1
+)
+
 echo [INFO] Generating Supabase config from frontend\.env.local...
 python generate_supabase_config.py
 if %errorlevel% neq 0 (

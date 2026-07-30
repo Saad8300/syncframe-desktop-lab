@@ -27,8 +27,32 @@ if not exist "backend\build_backend_windows.bat" (
     exit /b 1
 )
 
-:: 1. Build Backend
-echo [INFO] Step 1: Building Backend...
+:: 1. Verify generated caption presets are in sync
+:: The Python renderer and the TypeScript Studio preview are both generated
+:: from shared\caption_presets.json. If either generated file is stale, the
+:: preview silently disagrees with the actual render — so fail the build here
+:: rather than ship a mismatch. Runs first: it is instant, and there is no
+:: point spending minutes on PyInstaller if the presets are wrong.
+echo [INFO] Step 1: Verifying generated caption presets...
+if not exist "backend\.venv\Scripts\python.exe" (
+    echo [ERROR] Virtual environment not found at backend\.venv.
+    echo Please run setup_windows.bat from the project root first.
+    pause
+    exit /b 1
+)
+backend\.venv\Scripts\python.exe scripts\generate_caption_presets.py --check
+if %errorlevel% neq 0 (
+    echo.
+    echo [ERROR] Generated caption presets are out of sync with
+    echo         shared\caption_presets.json.
+    echo         Run: python scripts\generate_caption_presets.py
+    echo         then commit the regenerated files and build again.
+    pause
+    exit /b 1
+)
+
+:: 2. Build Backend
+echo [INFO] Step 2: Building Backend...
 call backend\build_backend_windows.bat
 if %errorlevel% neq 0 (
     echo [ERROR] Backend build script failed.
@@ -36,8 +60,8 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-:: 2. Build Frontend and Desktop App
-echo [INFO] Step 2: Building Desktop App (and Frontend)...
+:: 3. Build Frontend and Desktop App
+echo [INFO] Step 3: Building Desktop App (and Frontend)...
 cd /d "%~dp0"
 cd /d "%~dp0desktop"
 call npm run build:win
