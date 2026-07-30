@@ -27,3 +27,20 @@ faster-whisper
 # wheels, so they cannot ship cross-platform. Every installable version of
 # this package is GPL; treat the engine's license as GPL-3.0.
 piper-tts==1.4.2
+
+# Text to Speech — Cloud engine (optional, online). Microsoft Edge speech
+# service via edge-tts. LGPLv3; sends TEXT over the network at synthesis time.
+# Thin async HTTP/WebSocket client — adds aiohttp + small transitive deps, no
+# numpy/pandas involvement.
+edge-tts
+
+# Text to Speech — Auto-Translate. Uses Google's free public translate
+# endpoint (no API key, no per-call cost). MIT library; the endpoint itself is
+# undocumented and may rate-limit or change, so translation failures are
+# surfaced to the user rather than silently voicing untranslated text.
+deep-translator
+
+# Offline language detection for the Auto-Translate mismatch prompt. BSD,
+# pure-Python + numpy (already required). Chosen over script-range heuristics,
+# which cannot separate Urdu from Arabic or English from Spanish/French.
+py3langid
