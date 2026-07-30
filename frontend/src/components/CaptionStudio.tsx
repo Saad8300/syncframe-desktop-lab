@@ -6,6 +6,7 @@ import { useCaptionPresets } from '../hooks/useCaptionPresets';
 import { resolveCaptionStyle } from '../utils/captionResolver';
 import { CaptionPreview } from './CaptionPreview';
 import { CaptionInspector } from './CaptionInspector';
+import { PRESET_META, PRESET_ORDER, PRESET_CATEGORIES } from '../utils/captionPresetsGenerated';
 
 interface Props {
   config: CaptionConfig;
@@ -13,26 +14,14 @@ interface Props {
   onClose: () => void;
 }
 
-const CATEGORIES = ['All', 'Trending', 'Classic', 'Clean', 'Bold', 'Social', 'Cinematic', 'Minimal', 'Podcast'];
+// Categories and per-preset tagging both come from the generated table, so a
+// new preset in shared/caption_presets.json is filterable without editing this
+// file. 'All' is a UI-only pseudo-category.
+const CATEGORIES = ['All', ...PRESET_CATEGORIES];
 
-const PRESET_CATEGORY_MAP: Record<string, string[]> = {
-  'viral_bold': ['Trending', 'Bold', 'Social'],
-  'impact_stack': ['Trending', 'Bold'],
-  'highlight_bar': ['Social', 'Bold'],
-  'neon_pop': ['Trending', 'Social'],
-  'minimal': ['Minimal', 'Clean', 'Classic'],
-  'hot_take': ['Social', 'Trending'],
-  'clean_subtitle': ['Clean', 'Classic'],
-  'documentary': ['Cinematic', 'Classic'],
-  'podcast_bold': ['Podcast', 'Bold'],
-  'soft_box': ['Minimal', 'Clean'],
-  'punch_yellow': ['Bold', 'Social'],
-  'mono_tech': ['Minimal'],
-  'cinema_clean': ['Cinematic', 'Clean'],
-  'news_bar': ['Classic', 'Bold'],
-  'electric_blue': ['Social', 'Trending'],
-  'red_alert': ['Trending', 'Bold'],
-};
+const PRESET_CATEGORY_MAP: Record<string, string[]> = Object.fromEntries(
+  PRESET_ORDER.map(id => [id, PRESET_META[id].categories])
+);
 
 export function CaptionStudio({ config: initialConfig, onSave, onClose }: Props) {
   const [history, setHistory] = useState<CaptionConfig[]>([JSON.parse(JSON.stringify(initialConfig))]);
