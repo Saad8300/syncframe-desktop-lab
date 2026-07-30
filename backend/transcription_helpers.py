@@ -422,7 +422,8 @@ def transcribe_audio_backend(
     segmentation_intensity: str = "detailed",
     original_script: Optional[str] = None,
     advanced_settings: Optional[Dict[str, Any]] = None,
-    progress_callback: Optional[Callable[[str, int], None]] = None
+    progress_callback: Optional[Callable[[str, int], None]] = None,
+    word_timestamps: bool = False
 ) -> dict:
     """
     Main entry point for backend transcription.
@@ -484,33 +485,52 @@ def transcribe_audio_backend(
 
     # Transcribe with VAD fallback
     raw_segments = []
-    
+    # Flat, in-order list of every word with its own start/end. Only populated
+    # when word_timestamps is requested (the caption pipeline); Script
+    # Timestamp leaves it off so it doesn't pay the alignment cost.
+    raw_words: List[Dict[str, Any]] = []
+
     def _do_transcribe(use_vad: bool):
         segs = []
+        words: List[Dict[str, Any]] = []
         gen, inf = model.transcribe(
             processed_audio_path,
             language=language,
             vad_filter=use_vad,
-            beam_size=5
+            beam_size=5,
+            word_timestamps=word_timestamps
         )
         for i, segment in enumerate(gen):
             start_t = max(0.0, segment.start)
             end_t = min(true_duration if true_duration > 0 else inf.duration, segment.end)
-            
+
             if end_t <= start_t:
                 continue
-                
+
             segs.append({
                 "start": start_t,
                 "end": end_t,
                 "text": segment.text.strip(),
             })
+
+            if word_timestamps:
+                for w in (getattr(segment, "words", None) or []):
+                    w_text = (w.word or "").strip()
+                    w_start = max(0.0, float(w.start))
+                    w_end = float(w.end)
+                    # Whisper occasionally emits zero/negative-length words on
+                    # disfluencies; give them a floor so karaoke timing stays
+                    # monotonic instead of collapsing to a zero-width event.
+                    if not w_text or w_end <= w_start:
+                        continue
+                    words.append({"word": w_text, "start": w_start, "end": w_end})
+
             if progress_callback and i % 5 == 0:
                 progress_callback(f"Transcribing… ({seconds_to_ts(end_t)})", min(90, 20 + i))
-        return segs, inf
+        return segs, inf, words
 
     try:
-        raw_segments, info = _do_transcribe(use_vad=True)
+        raw_segments, info, raw_words = _do_transcribe(use_vad=True)
     except Exception as e:
         err_msg = str(e)
         if "silero_vad" in err_msg or "NoSuchFile" in err_msg or "VAD" in err_msg:
@@ -518,7 +538,7 @@ def transcribe_audio_backend(
             if progress_callback:
                 progress_callback("Retrying transcription (VAD disabled)…", 25)
             # Retry without VAD
-            raw_segments, info = _do_transcribe(use_vad=False)
+            raw_segments, info, raw_words = _do_transcribe(use_vad=False)
         else:
             raise e
 
@@ -579,5 +599,10 @@ def transcribe_audio_backend(
         "language": info.language,
         "avg_segment_length": round(avg_len, 2),
         "original_script_used": original_script_used,
-        "model_name": model_name
+        "model_name": model_name,
+        # Flat word list straight off the model, deliberately NOT run through
+        # the segmentation/formatting passes above — those merge and re-split
+        # segments and would destroy per-word timing. The caption pipeline
+        # chunks these itself. Empty unless word_timestamps was requested.
+        "words": raw_words
     }

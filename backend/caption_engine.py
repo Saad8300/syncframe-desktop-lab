@@ -11,135 +11,18 @@ from typing import Optional, List, Dict, Any
 logger = logging.getLogger(__name__)
 
 
-# ─── Preset definitions (mirrors frontend CAPTION_PRESETS) ────────────────────
-BUILT_IN_DEFINITIONS = {
-  "viral_bold": {
-    "fontFamily": "Roboto", "fontWeight": "900", "fontScale": 1.0, "textTransform": "uppercase",
-    "letterSpacing": 0.02, "lineHeight": "tight", "textAlign": "center", "position": "lower_center",
-    "verticalOffset": 0, "maxWidth": 85, "maxLines": 2, "maxWords": 5, "primaryColor": "#FFFFFF",
-    "accentColor": "#FFE600", "accentMode": "second_line", "outlineStyle": "thick",
-    "outlineColor": "#000000", "shadowStyle": "medium", "shadowColor": "#FFE600", "boxStyle": "none",
-  },
-  "impact_stack": {
-    "fontFamily": "Anton", "fontWeight": "400", "fontScale": 1.0, "textTransform": "uppercase",
-    "letterSpacing": 0.04, "lineHeight": "tight", "textAlign": "center", "position": "bottom",
-    "maxWidth": 90, "maxLines": 3, "maxWords": 4, "primaryColor": "#FFFFFF", "accentColor": "#A855F7",
-    "accentMode": "alternate_phrase", "outlineStyle": "medium", "outlineColor": "#A855F7",
-    "shadowStyle": "strong", "shadowColor": "#000000", "boxStyle": "none",
-  },
-  "highlight_bar": {
-    "fontFamily": "Inter", "fontWeight": "900", "fontScale": 1.0, "textTransform": "uppercase",
-    "lineHeight": "tight", "textAlign": "center", "position": "lower_center", "maxWidth": 80,
-    "maxLines": 2, "maxWords": 6, "primaryColor": "#000000", "accentColor": "#FF8A00",
-    "accentMode": "none", "outlineStyle": "none", "shadowStyle": "none", "boxStyle": "medium",
-    "boxColor": "#FF8A00",
-  },
-  "neon_pop": {
-    "fontFamily": "Montserrat", "fontWeight": "800", "fontScale": 1.0, "textTransform": "uppercase",
-    "letterSpacing": 0.03, "lineHeight": "tight", "textAlign": "center", "position": "bottom",
-    "maxWidth": 85, "maxLines": 2, "maxWords": 4, "primaryColor": "#FFFFFF", "accentColor": "#00E5FF",
-    "accentMode": "none", "outlineStyle": "thin", "outlineColor": "#000000", "shadowStyle": "strong",
-    "shadowColor": "#00E5FF", "boxStyle": "none",
-  },
-  "minimal": {
-    "fontFamily": "Inter", "fontWeight": "400", "fontScale": 0.8, "textTransform": "original",
-    "letterSpacing": 0.01, "lineHeight": "relaxed", "textAlign": "center", "position": "bottom",
-    "maxWidth": 90, "maxLines": 2, "maxWords": 8, "primaryColor": "#FFFFFF", "accentColor": "#CCCCCC",
-    "accentMode": "none", "outlineStyle": "none", "shadowStyle": "soft", "shadowColor": "#000000", "boxStyle": "none",
-  },
-  "hot_take": {
-    "fontFamily": "Bangers", "fontWeight": "400", "fontScale": 1.2, "textTransform": "uppercase",
-    "letterSpacing": 0.02, "lineHeight": "tight", "textAlign": "center", "position": "center",
-    "maxWidth": 95, "maxLines": 2, "maxWords": 3, "primaryColor": "#3333FF", "accentColor": "#FF6633",
-    "accentMode": "none", "outlineStyle": "thick", "outlineColor": "#FF6633", "shadowStyle": "none", "boxStyle": "none",
-  },
-  "clean_subtitle": {
-    "fontFamily": "Roboto", "fontWeight": "400", "fontScale": 0.9, "textTransform": "original",
-    "letterSpacing": 0, "lineHeight": "normal", "textAlign": "center", "position": "bottom",
-    "maxWidth": 85, "maxLines": 2, "maxWords": 10, "primaryColor": "#EAEAEA", "accentColor": "#FFFFFF",
-    "accentMode": "none", "outlineStyle": "thin", "outlineColor": "#000000", "shadowStyle": "soft", "shadowColor": "#000000", "boxStyle": "none",
-  },
-  "documentary": {
-    "fontFamily": "Lora", "fontWeight": "400", "fontScale": 0.85, "textTransform": "original",
-    "letterSpacing": 0.01, "lineHeight": "relaxed", "textAlign": "left", "position": "bottom",
-    "maxWidth": 90, "maxLines": 2, "maxWords": 12, "primaryColor": "#F5F5F5", "accentColor": "#FFCC00",
-    "accentMode": "none", "outlineStyle": "none", "shadowStyle": "medium", "shadowColor": "#000000", "boxStyle": "none",
-  },
-  "podcast_bold": {
-    "fontFamily": "Anton", "fontWeight": "400", "fontScale": 1.1, "textTransform": "uppercase",
-    "letterSpacing": 0, "lineHeight": "tight", "textAlign": "center", "position": "center",
-    "maxWidth": 80, "maxLines": 3, "maxWords": 3, "primaryColor": "#FFFFFF", "accentColor": "#00FF66",
-    "accentMode": "first_word", "outlineStyle": "medium", "outlineColor": "#000000", "shadowStyle": "none", "boxStyle": "none",
-  },
-  "soft_box": {
-    "fontFamily": "Lato", "fontWeight": "700", "fontScale": 0.9, "textTransform": "original",
-    "letterSpacing": 0, "lineHeight": "normal", "textAlign": "center", "position": "lower_center",
-    "maxWidth": 85, "maxLines": 2, "maxWords": 8, "primaryColor": "#FFFFFF", "accentColor": "#FF3399",
-    "accentMode": "none", "outlineStyle": "none", "shadowStyle": "none", "boxStyle": "subtle", "boxColor": "#000000",
-  },
-  "punch_yellow": {
-    "fontFamily": "Inter", "fontWeight": "900", "fontScale": 1.1, "textTransform": "uppercase",
-    "letterSpacing": 0.05, "lineHeight": "tight", "textAlign": "center", "position": "center",
-    "maxWidth": 80, "maxLines": 2, "maxWords": 4, "primaryColor": "#FFE600", "accentColor": "#FFFFFF",
-    "accentMode": "none", "outlineStyle": "thick", "outlineColor": "#000000", "shadowStyle": "strong", "shadowColor": "#000000", "boxStyle": "none",
-  },
-  "mono_tech": {
-    "fontFamily": "Roboto Condensed", "fontWeight": "700", "fontScale": 0.85, "textTransform": "uppercase",
-    "letterSpacing": 0.1, "lineHeight": "normal", "textAlign": "left", "position": "bottom",
-    "maxWidth": 90, "maxLines": 3, "maxWords": 6, "primaryColor": "#00FF00", "accentColor": "#FFFFFF",
-    "accentMode": "none", "outlineStyle": "none", "shadowStyle": "soft", "shadowColor": "#00FF00", "boxStyle": "subtle", "boxColor": "#002200",
-  },
-  "cinema_clean": {
-    "fontFamily": "Playfair Display", "fontWeight": "400", "fontScale": 0.75, "textTransform": "original",
-    "letterSpacing": 0.1, "lineHeight": "relaxed", "textAlign": "center", "position": "bottom",
-    "maxWidth": 90, "maxLines": 2, "maxWords": 8, "primaryColor": "#FFFFFF", "accentColor": "#E0E0E0",
-    "accentMode": "none", "outlineStyle": "none", "shadowStyle": "none", "boxStyle": "none",
-  },
-  "news_bar": {
-    "fontFamily": "Oswald", "fontWeight": "700", "fontScale": 0.9, "textTransform": "uppercase",
-    "letterSpacing": 0, "lineHeight": "normal", "textAlign": "left", "position": "bottom",
-    "maxWidth": 100, "maxLines": 1, "maxWords": 15, "primaryColor": "#FFFFFF", "accentColor": "#FF0000",
-    "accentMode": "none", "outlineStyle": "none", "shadowStyle": "soft", "shadowColor": "#000000", "boxStyle": "medium",
-    "boxColor": "#000000",
-  },
-  "electric_blue": {
-    "fontFamily": "Inter", "fontWeight": "900", "fontScale": 1.0, "textTransform": "uppercase",
-    "letterSpacing": 0.03, "lineHeight": "tight", "textAlign": "center", "position": "center",
-    "maxWidth": 80, "maxLines": 3, "maxWords": 5, "primaryColor": "#00FFFF", "accentColor": "#FFFFFF",
-    "accentMode": "alternate_phrase", "outlineStyle": "medium", "outlineColor": "#0000FF", "shadowStyle": "glow", "shadowColor": "#00FFFF", "boxStyle": "none",
-  },
-  "red_alert": {
-    "fontFamily": "Anton", "fontWeight": "400", "fontScale": 1.25, "textTransform": "uppercase",
-    "letterSpacing": 0.05, "lineHeight": "tight", "textAlign": "center", "position": "center",
-    "maxWidth": 90, "maxLines": 2, "maxWords": 3, "primaryColor": "#FF0000", "accentColor": "#FFFFFF",
-    "accentMode": "first_word", "outlineStyle": "thick", "outlineColor": "#000000", "shadowStyle": "strong", "shadowColor": "#FF0000", "boxStyle": "none",
-  }
-}
-
-FALLBACK_DEFAULTS = {
-    "fontFamily": "Roboto",
-    "fontWeight": "bold",
-    "fontScale": 1.0,
-    "textTransform": "original",
-    "letterSpacing": 0,
-    "lineHeight": "normal",
-    "textAlign": "center",
-    "position": "bottom",
-    "verticalOffset": 0,
-    "maxWidth": 85,
-    "maxLines": 2,
-    "maxWords": 5,
-    "safeMargin": 5,
-    "primaryColor": "#FFFFFF",
-    "accentColor": "#FF0000",
-    "accentMode": "none",
-    "outlineStyle": "medium",
-    "outlineColor": "#000000",
-    "shadowStyle": "none",
-    "shadowColor": "#000000",
-    "boxStyle": "none",
-    "boxColor": "#000000",
-}
+# ─── Preset definitions ───────────────────────────────────────────────────────
+# Generated from shared/caption_presets.json by
+# scripts/generate_caption_presets.py, which emits this table and the matching
+# TypeScript one used by the Studio preview. Previously these were two
+# hand-maintained literals that had to be kept identical by hand; any drift
+# meant the preview disagreed with the actual render.
+from caption_presets_generated import (  # noqa: E402
+    BUILT_IN_DEFINITIONS,
+    FALLBACK_DEFAULTS,
+    PRESET_META,
+    KARAOKE_PRESET_IDS,
+)
 
 def resolve_caption_style(preset_id: str, overrides: Dict[str, Any]) -> Dict[str, Any]:
     custom_preset = overrides.get("snapshot_full_overrides")
@@ -204,6 +87,20 @@ def resolve_caption_style(preset_id: str, overrides: Dict[str, Any]) -> Dict[str
     _safe_int("verticalOffset", 0)
 
     return result
+
+def _escape_ass_text(text: str) -> str:
+    """
+    Neutralise characters that libass would read as markup. A literal '{' in a
+    caption would otherwise open an override block and swallow the rest of the
+    line, and a raw backslash can form an unintended tag.
+    """
+    return (
+        str(text)
+        .replace("\\", "\\\\")
+        .replace("{", "\\{")
+        .replace("}", "\\}")
+    )
+
 
 def _hex_to_ass_color(hex_color: str, alpha: int = 0) -> str:
     h = hex_color.lstrip('#')
@@ -282,6 +179,109 @@ def _seconds_to_ass_time(s: float) -> str:
                 h += 1
                 m -= 60
     return f"{h}:{m:02d}:{sec:02d}.{cs:02d}"
+
+def _transform_text(text: str, transform: str) -> str:
+    if transform == "uppercase":
+        return text.upper()
+    if transform == "lowercase":
+        return text.lower()
+    if transform == "title_case":
+        return text.title()
+    return text
+
+
+def _layout_lines(words: List[Dict[str, Any]], max_lines: int) -> List[List[int]]:
+    """Distribute word indices across at most max_lines balanced lines."""
+    n = len(words)
+    if n == 0:
+        return []
+    num_lines = max(1, min(max_lines, n))
+    per_line = (n + num_lines - 1) // num_lines
+    return [list(range(i, min(i + per_line, n))) for i in range(0, n, per_line)]
+
+
+def chunk_words(words: List[Dict[str, Any]], style: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Group real word-timed tokens into caption chunks, preserving each word's
+    own start/end. This is what makes karaoke possible: unlike the old
+    character-ratio interpolation, every word here carries measured timing
+    straight from Whisper.
+
+    Returns chunks of {start, end, lines: [[word, ...]], words: [word, ...]}
+    where each word is {text, start, end}.
+    """
+    max_words = int(style.get("maxWords", 5)) or 999
+    if max_words <= 0:
+        max_words = 999
+    max_lines = max(1, int(style.get("maxLines", 2)))
+    transform = style.get("textTransform", "original")
+
+    chunks: List[Dict[str, Any]] = []
+    current: List[Dict[str, Any]] = []
+
+    def flush():
+        if not current:
+            return
+        line_idx = _layout_lines(current, max_lines)
+        chunks.append({
+            "start": current[0]["start"],
+            "end": current[-1]["end"],
+            "words": list(current),
+            "lines": [[current[i] for i in idxs] for idxs in line_idx],
+        })
+        current.clear()
+
+    for w in words:
+        text = _transform_text(str(w.get("word", "")).strip(), transform)
+        if not text:
+            continue
+        current.append({"text": text, "start": float(w["start"]), "end": float(w["end"])})
+        # Break on a hard sentence boundary early, or once the chunk is full.
+        ends_sentence = text.endswith(('.', '!', '?', '۔', '।'))
+        if len(current) >= max_words or (ends_sentence and len(current) >= max(1, max_words // 2)):
+            flush()
+    flush()
+
+    # Close sub-frame gaps so a chunk stays on screen until the next begins,
+    # which avoids a visible flicker between consecutive captions.
+    for i in range(len(chunks) - 1):
+        gap = chunks[i + 1]["start"] - chunks[i]["end"]
+        if 0 < gap <= 0.35:
+            chunks[i]["end"] = chunks[i + 1]["start"]
+    return chunks
+
+
+def synthesize_words_from_segments(segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Build approximate word timings for sources that have none (SRT uploads and
+    manual entry). Distributes each cue's duration across its words weighted by
+    length. Karaoke driven by these is visibly approximate — real word timing
+    only comes from the Whisper path — but it keeps every preset usable with
+    every caption source instead of silently degrading to no highlighting.
+    """
+    out: List[Dict[str, Any]] = []
+    for seg in segments:
+        text = str(seg.get("text", "")).strip()
+        if not text:
+            continue
+        tokens = text.split()
+        if not tokens:
+            continue
+        start = float(seg["start"])
+        end = float(seg["end"])
+        span = max(0.001, end - start)
+        weights = [max(1, len(t)) for t in tokens]
+        total = sum(weights)
+        cursor = start
+        for tok, wgt in zip(tokens, weights):
+            dur = span * (wgt / total)
+            w_end = min(end, cursor + dur)
+            if w_end <= cursor:
+                w_end = min(end, cursor + 0.001)
+            out.append({"word": tok, "start": cursor, "end": w_end})
+            cursor = w_end
+    return out
+
 
 def chunk_caption_segments(segments: List[Dict[str, Any]], style: Dict[str, Any]) -> List[Dict[str, Any]]:
     max_words = style.get("maxWords", 5)
@@ -444,6 +444,104 @@ def build_styled_ass(segments: List[Dict[str, Any]], config: Dict[str, Any], wid
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
     ]
 
+    # ── Karaoke path ─────────────────────────────────────────────────────────
+    # Driven by real per-word timing. Two techniques, selectable per preset:
+    #
+    #   "fill"        native ASS \kf sweep. One event per chunk; libass wipes
+    #                 SecondaryColour -> PrimaryColour across each word for its
+    #                 own duration. Cheap and smooth, but colour-only.
+    #
+    #   "word_window" one event per word, each spanning that word's real
+    #                 [start,end] and rendering the whole chunk with only the
+    #                 active word overridden. This is what allows a scale pop,
+    #                 a highlight pill, or dimming the inactive words — none of
+    #                 which \k can express. Inactive words keep their metrics,
+    #                 so the line never reflows between events.
+    karaoke_mode = style.get("karaokeMode", "none")
+    word_list = config.get("words") or []
+
+    if karaoke_mode in ("fill", "word_window") and word_list:
+        chunks = chunk_words(word_list, style)
+        active_ass = _hex_to_ass_color(style.get("activeColor") or style["accentColor"], 0)
+        inactive_alpha = int(style.get("inactiveAlpha", 0) or 0)
+        inactive_alpha = max(0, min(255, inactive_alpha))
+        active_scale = int(style.get("activeScale", 100) or 100)
+        active_pop = int(style.get("activePop", 0) or 0)
+        act_outline = style.get("activeOutlineColor") or ""
+        act_box = style.get("activeBoxColor") or ""
+        gradient = style.get("gradientCycle") or []
+
+        for chunk in chunks:
+            c_start = _seconds_to_ass_time(chunk["start"])
+            c_end = _seconds_to_ass_time(chunk["end"])
+
+            if karaoke_mode == "fill":
+                # \kf durations are centiseconds and are consumed sequentially,
+                # so each word's value is its own measured length.
+                parts = []
+                for li, line in enumerate(chunk["lines"]):
+                    if li:
+                        parts.append("\\N")
+                    for w in line:
+                        cs = max(1, int(round((w["end"] - w["start"]) * 100)))
+                        parts.append(f"{{\\kf{cs}}}{_escape_ass_text(w['text'])} ")
+                body = "".join(parts).rstrip()
+                ass.append(f"Dialogue: 0,{c_start},{c_end},Default,,0,0,0,,{body}")
+                continue
+
+            # word_window
+            for wi, active in enumerate(chunk["words"]):
+                w_start = _seconds_to_ass_time(active["start"])
+                w_end = _seconds_to_ass_time(active["end"])
+
+                colour = active_ass
+                if gradient:
+                    colour = _hex_to_ass_color(gradient[wi % len(gradient)], 0)
+
+                on = [f"\\1c{colour}"]
+                if act_outline:
+                    on.append(f"\\3c{_hex_to_ass_color(act_outline, 0)}")
+                if act_box:
+                    # Render the pill via a heavy border in the box colour.
+                    on.append(f"\\3c{_hex_to_ass_color(act_box, 0)}")
+                    on.append(f"\\bord{max(3, int(font_size * 0.10))}")
+                if active_scale != 100:
+                    on.append(f"\\fscx{active_scale}\\fscy{active_scale}")
+                    if active_pop > 0:
+                        on.append(f"\\t(0,{active_pop},\\fscx100\\fscy100)")
+                active_tag = "{" + "".join(on) + "}"
+
+                parts = []
+                idx = 0
+                for li, line in enumerate(chunk["lines"]):
+                    if li:
+                        parts.append("\\N")
+                    for w in line:
+                        txt = _escape_ass_text(w["text"])
+                        if idx == wi:
+                            parts.append(f"{active_tag}{txt}{{\\r}}")
+                        elif inactive_alpha:
+                            if inactive_alpha >= 255:
+                                # Typewriter reveal: words already spoken stay
+                                # fully visible, upcoming ones are hidden. The
+                                # line still reserves their space, so nothing
+                                # shifts as each word appears.
+                                if idx > wi:
+                                    parts.append(f"{{\\alpha&HFF&}}{txt}{{\\r}}")
+                                else:
+                                    parts.append(txt)
+                            else:
+                                parts.append(f"{{\\alpha&H{inactive_alpha:02X}&}}{txt}{{\\r}}")
+                        else:
+                            parts.append(txt)
+                        parts.append(" ")
+                        idx += 1
+                body = "".join(parts).rstrip()
+                ass.append(f"Dialogue: 0,{w_start},{w_end},Default,,0,0,0,,{body}")
+
+        return "\n".join(ass)
+
+    # ── Non-karaoke path (unchanged behaviour) ───────────────────────────────
     chunked_segments = chunk_caption_segments(segments, style)
 
     for seg in chunked_segments:
@@ -518,6 +616,16 @@ def prepare_captions_ass(
         progress_callback("Validating caption settings...", 0)
 
     segments = []
+    words: List[Dict[str, Any]] = []
+
+    # Whether this render needs per-word timing at all. Resolving the style up
+    # front avoids paying Whisper's word-alignment cost for presets that don't
+    # use karaoke.
+    _style_probe = resolve_caption_style(
+        config.get("presetId", config.get("caption_preset", "viral_bold")),
+        config.get("overrides", {}),
+    )
+    wants_karaoke = _style_probe.get("karaokeMode", "none") != "none"
 
     if caption_source == "auto":
         if not main_audio_path or not os.path.exists(main_audio_path):
@@ -537,9 +645,11 @@ def prepare_captions_ass(
                 model_name="base",
                 output_style="detailed",
                 segmentation_intensity="normal",
-                progress_callback=_tx_prog
+                progress_callback=_tx_prog,
+                word_timestamps=wants_karaoke
             )
             segments = res.get("segments", [])
+            words = res.get("words", []) or []
             if not segments:
                 raise ValueError("Transcription returned no segments.")
         except Exception as e:
@@ -560,14 +670,42 @@ def prepare_captions_ass(
         
         segments = parse_srt(srt_path)
 
+    elif caption_source == "manual":
+        # Cues typed/edited by the user in the Caption Studio editor. Already
+        # validated client-side, but re-check here so a malformed payload can't
+        # produce a broken ASS file.
+        raw = config.get("manual_segments") or []
+        for i, cue in enumerate(raw):
+            try:
+                start = float(cue.get("start"))
+                end = float(cue.get("end"))
+            except (TypeError, ValueError):
+                raise RuntimeError(f"Manual caption {i + 1} has an invalid start or end time.")
+            text = str(cue.get("text", "")).strip()
+            if not text:
+                continue
+            if end <= start:
+                raise RuntimeError(
+                    f"Manual caption {i + 1} ends at or before it starts ({start}s → {end}s)."
+                )
+            segments.append({"start": start, "end": end, "text": text})
+        segments.sort(key=lambda s: s["start"])
+        if not segments:
+            raise RuntimeError("No manual captions were entered. Add at least one line.")
+
     if not segments:
         raise RuntimeError("No caption segments were produced.")
+
+    # SRT and manual sources carry no word timing. Approximate it so karaoke
+    # presets still work with them rather than silently rendering flat.
+    if wants_karaoke and not words:
+        words = synthesize_words_from_segments(segments)
 
     if progress_callback:
         progress_callback("Applying captions...", 60)
 
     # Build ASS file
-    ass_content = build_styled_ass(segments, config, width, height)
+    ass_content = build_styled_ass(segments, {**config, "words": words}, width, height)
     
     # Save ASS to temporary file (utf-8 for libass)
     temp_dir = Path(tempfile.gettempdir())
