@@ -37,7 +37,26 @@ CREDIT_COSTS = {
 # audio duration for Text to Speech credit estimates (~180 wpm at ~5 chars
 # per word). Shared by the backend estimator and the frontend so the
 # pre-generation estimate and the charged amount agree.
+# Empirically validated: a 5,960-char script synthesized to 403s of audio
+# (14.8 chars/sec), vs 398s predicted by this constant.
 TTS_CHARS_PER_SECOND = 15.0
+
+# Text to Speech mode thresholds (characters).
+# Short Form is a single synthesis pass; Long Form chunks the text, synthesizes
+# each chunk, and concatenates. Mirrors the source app's proven values.
+TTS_SHORT_FORM_MAX_CHARS = 5000
+TTS_LONG_FORM_MAX_CHARS = 30000
+TTS_LONG_FORM_CHUNK_SIZE = 1500
+
+# Auto-Translate surcharge: 1 credit per 1,000 characters translated
+# (minimum 1), on top of the normal generation cost. Rationale: a 5,000-char
+# script costs ~6 credits to voice, so translation adds ~5 — proportional to
+# the extra processing without being punitive. Translation currently runs
+# through a free public endpoint, so the marginal cost to the operator is $0.
+# NOTE: if this is ever switched to a paid API (Google Cloud Translation /
+# DeepL at ~$20-25 per million characters), this rate under-recovers by
+# roughly 4x and should be raised.
+TTS_TRANSLATION_CHARS_PER_CREDIT = 1000
 
 # Plan Limits 
 # -----------

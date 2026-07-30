@@ -3,9 +3,9 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 try:
-    from plan_limits import CREDIT_COSTS, PLANS
+    from plan_limits import CREDIT_COSTS, PLANS, TTS_TRANSLATION_CHARS_PER_CREDIT
 except ImportError:
-    from .plan_limits import CREDIT_COSTS, PLANS
+    from .plan_limits import CREDIT_COSTS, PLANS, TTS_TRANSLATION_CHARS_PER_CREDIT
 
 plans_router = APIRouter()
 credits_router = APIRouter()
@@ -16,6 +16,9 @@ class EstimateRequest(BaseModel):
     resolution: str = "1080p" # "720p", "1080p", "2K", "4K"
     count: int = 1
     premium_template: bool = False
+    # Characters to be auto-translated before synthesis (Text to Speech).
+    # 0 = no translation. Priced separately from the generation itself.
+    translate_chars: int = 0
 
 @plans_router.get("/catalog")
 def get_plans_catalog():
@@ -73,6 +76,11 @@ def estimate_credits(req: EstimateRequest):
     breakdown.append({"label": label, "credits": base_cost})
 
     # 2. Addons
+    if req.translate_chars and req.translate_chars > 0:
+        translate_cost = max(1, math.ceil(req.translate_chars / TTS_TRANSLATION_CHARS_PER_CREDIT))
+        total_credits += translate_cost
+        breakdown.append({"label": f"Auto-Translate ({req.translate_chars:,} chars)", "credits": translate_cost})
+
     if req.premium_template:
         addon_cost = CREDIT_COSTS["addons"]["premium_template"] * req.count
         total_credits += addon_cost

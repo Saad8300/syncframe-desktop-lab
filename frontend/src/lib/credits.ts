@@ -43,7 +43,11 @@ export async function estimateCredits(tool: string, options: any): Promise<numbe
         duration_seconds: dur,
         resolution: options.resolution || '1080p',
         count: num_videos,
-        premium_template: options.is_premium_template || false
+        premium_template: options.is_premium_template || false,
+        // Text to Speech Auto-Translate surcharge. Must be forwarded so the
+        // displayed estimate matches what reserve_credits charges — the same
+        // value is passed in reserveCredits' options_json.
+        translate_chars: options.translate_chars || 0
       })
     })
 
