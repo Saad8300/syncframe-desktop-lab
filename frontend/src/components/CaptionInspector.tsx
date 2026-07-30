@@ -13,6 +13,17 @@ interface Props {
 export function CaptionInspector({ overrides, resolvedStyle, onChange, onReset }: Props) {
   const [activeTab, setActiveTab] = useState<'text'|'layout'|'style'|'effects'|'timing'>('text');
 
+  // Karaoke values fall back to the resolved preset style, so the controls show
+  // what the selected preset actually does before the user overrides anything.
+  const eff = (overrides.effects || {}) as any;
+  const rs = resolvedStyle as any;
+  const karaokeMode: string = eff.karaokeMode ?? rs.karaokeMode ?? 'none';
+  const activeColor: string = eff.activeColor ?? rs.activeColor ?? '#FFE600';
+  const activeScale: number = eff.activeScale ?? rs.activeScale ?? 100;
+  const activePop: number = eff.activePop ?? rs.activePop ?? 0;
+  const inactiveAlpha: number = eff.inactiveAlpha ?? rs.inactiveAlpha ?? 0;
+  const activeBoxColor: string = eff.activeBoxColor ?? rs.activeBoxColor ?? '';
+
   const update = (category: keyof CaptionOverrides, field: string, value: any) => {
     const newOverrides = { ...overrides };
     if (!newOverrides[category]) newOverrides[category] = {};
@@ -245,12 +256,11 @@ export function CaptionInspector({ overrides, resolvedStyle, onChange, onReset }
         )}
 
         {activeTab === 'effects' && (
-          <div className="space-y-4 text-center py-8 text-gray-500 animate-fade-in">
-            <p className="text-[10px]">Effects will be simulated in the preview during playback.</p>
-            <div className="text-left mt-4 space-y-4">
+          <div className="space-y-4 animate-fade-in">
+            <div className="text-left space-y-4">
               <div>
                 <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Entry Effect</label>
-                <select className="w-full bg-gray-900 border border-gray-700 rounded-sm p-1.5 text-[10px] text-gray-200 outline-none focus:border-gray-500"
+                <select className="w-full bg-gray-900 border border-gray-700 rounded-sm p-1.5 text-[10px] text-gray-200 outline-none focus:border-gray-500 transition-colors duration-200"
                   value={(overrides.effects as any)?.entryAnimation || 'none'} onChange={e => update('effects', 'entryAnimation', e.target.value)}>
                   <option value="none">None</option>
                   <option value="fade">Fade In</option>
@@ -258,6 +268,79 @@ export function CaptionInspector({ overrides, resolvedStyle, onChange, onReset }
                   <option value="rise">Rise Up</option>
                 </select>
               </div>
+
+              {/* ── Word-by-word karaoke ─────────────────────────────────── */}
+              <div className="pt-3 border-t border-gray-800">
+                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Word Highlighting</label>
+                <select className="w-full bg-gray-900 border border-gray-700 rounded-sm p-1.5 text-[10px] text-gray-200 outline-none focus:border-gray-500 transition-colors duration-200"
+                  value={karaokeMode} onChange={e => update('effects', 'karaokeMode', e.target.value)}>
+                  <option value="none">Off — whole caption at once</option>
+                  <option value="word_window">Word pop (CapCut style)</option>
+                  <option value="fill">Colour sweep (karaoke fill)</option>
+                </select>
+                <p className="text-[9px] text-gray-600 mt-1 leading-snug">
+                  Uses real word timing from local transcription. SRT and manual
+                  captions fall back to estimated word timing.
+                </p>
+              </div>
+
+              {karaokeMode !== 'none' && (
+                <>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Active Word Colour</label>
+                    <div className="flex gap-2">
+                      <input type="color" value={activeColor}
+                        onChange={e => update('effects', 'activeColor', e.target.value)}
+                        className="w-8 h-7 rounded border-none bg-transparent cursor-pointer p-0" />
+                      <input type="text" value={activeColor}
+                        onChange={e => update('effects', 'activeColor', e.target.value)}
+                        className="flex-1 bg-gray-900 border border-gray-700 rounded-sm p-1.5 text-[10px] text-gray-200 outline-none uppercase font-mono transition-colors duration-200 focus:border-gray-500" />
+                    </div>
+                  </div>
+
+                  {karaokeMode === 'word_window' && (
+                    <>
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
+                          Active Word Size — {activeScale}%
+                        </label>
+                        <input type="range" min="100" max="140" step="2" value={activeScale}
+                          onChange={e => update('effects', 'activeScale', parseInt(e.target.value))}
+                          className="w-full accent-gray-500" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
+                          Pop Settle — {activePop}ms
+                        </label>
+                        <input type="range" min="0" max="300" step="10" value={activePop}
+                          onChange={e => update('effects', 'activePop', parseInt(e.target.value))}
+                          className="w-full accent-gray-500" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
+                          Dim Other Words — {inactiveAlpha === 255 ? 'hidden (typewriter)' : inactiveAlpha}
+                        </label>
+                        <input type="range" min="0" max="255" step="5" value={inactiveAlpha}
+                          onChange={e => update('effects', 'inactiveAlpha', parseInt(e.target.value))}
+                          className="w-full accent-gray-500" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Highlight Pill</label>
+                        <div className="flex gap-2 items-center">
+                          <input type="color" value={activeBoxColor || '#FFE600'}
+                            onChange={e => update('effects', 'activeBoxColor', e.target.value)}
+                            className="w-8 h-7 rounded border-none bg-transparent cursor-pointer p-0" />
+                          <button
+                            onClick={() => update('effects', 'activeBoxColor', activeBoxColor ? '' : '#FFE600')}
+                            className="flex-1 bg-gray-900 border border-gray-700 rounded-sm p-1.5 text-[10px] text-gray-300 hover:border-gray-500 transition-colors duration-200">
+                            {activeBoxColor ? 'Remove pill' : 'Add pill behind word'}
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
             </div>
           </div>
         )}

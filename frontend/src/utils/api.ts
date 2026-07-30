@@ -132,11 +132,24 @@ export function appendCaptionSettings(form: FormData, settings: any) {
   }
 
   // Serialize the entire config object so the backend can decode it
-  form.append('caption_config_json', JSON.stringify({
+  const payload: any = {
     presetId: cc.presetId,
     overrides: overrides
-  }));
-  
+  };
+
+  // Manual captions travel inside the same JSON blob rather than as a file, so
+  // every caller that already forwards caption settings picks them up with no
+  // extra plumbing. Sorted and stripped of blanks to match what the backend
+  // validates.
+  if (cc.source === 'manual') {
+    payload.manual_segments = (cc.manualCues || [])
+      .filter((c: any) => String(c.text || '').trim())
+      .map((c: any) => ({ start: Number(c.start), end: Number(c.end), text: String(c.text).trim() }))
+      .sort((a: any, b: any) => a.start - b.start);
+  }
+
+  form.append('caption_config_json', JSON.stringify(payload));
+
   if (cc.srtFile) {
     form.append('srt_file', cc.srtFile);
   }

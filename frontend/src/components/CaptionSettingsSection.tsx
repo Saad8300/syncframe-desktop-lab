@@ -3,26 +3,19 @@ import { createPortal } from 'react-dom';
 import { CaptionConfig, DEFAULT_CAPTION_CONFIG } from '../types/caption';
 import { CaptionStudio } from './CaptionStudio';
 import { useCaptionPresets } from '../hooks/useCaptionPresets';
-import { BUILT_IN_PRESETS } from './CaptionSettingsSection';
+import { ManualCaptionEditor } from './ManualCaptionEditor';
 
-export const BUILT_IN_PRESETS_DATA = [
-  { id: 'viral_bold', name: 'Viral Bold', cardBg: 'linear-gradient(135deg, #111 0%, #000 100%)' },
-  { id: 'impact_stack', name: 'Impact Stack', cardBg: 'linear-gradient(135deg, #111 0%, #000 100%)' },
-  { id: 'highlight_bar', name: 'Highlight Bar', cardBg: 'linear-gradient(135deg, #111 0%, #000 100%)' },
-  { id: 'neon_pop', name: 'Neon Pop', cardBg: 'linear-gradient(135deg, #111 0%, #000 100%)' },
-  { id: 'minimal', name: 'Minimal', cardBg: 'linear-gradient(135deg, #111 0%, #000 100%)' },
-  { id: 'hot_take', name: 'Hot Take', cardBg: 'linear-gradient(135deg, #111 0%, #000 100%)' },
-  { id: 'clean_subtitle', name: 'Clean Sub', cardBg: 'linear-gradient(135deg, #111 0%, #000 100%)' },
-  { id: 'documentary', name: 'Documentary', cardBg: 'linear-gradient(135deg, #111 0%, #000 100%)' },
-  { id: 'podcast_bold', name: 'Podcast', cardBg: 'linear-gradient(135deg, #111 0%, #000 100%)' },
-  { id: 'soft_box', name: 'Soft Box', cardBg: 'linear-gradient(135deg, #111 0%, #000 100%)' },
-  { id: 'punch_yellow', name: 'Punch Yellow', cardBg: 'linear-gradient(135deg, #111 0%, #000 100%)' },
-  { id: 'mono_tech', name: 'Mono Tech', cardBg: 'linear-gradient(135deg, #111 0%, #000 100%)' },
-  { id: 'cinema_clean', name: 'Cinema Clean', cardBg: 'linear-gradient(135deg, #111 0%, #000 100%)' },
-  { id: 'news_bar', name: 'News Bar', cardBg: 'linear-gradient(135deg, #111 0%, #000 100%)' },
-  { id: 'electric_blue', name: 'Electric Blue', cardBg: 'linear-gradient(135deg, #111 0%, #000 100%)' },
-  { id: 'red_alert', name: 'Red Alert', cardBg: 'linear-gradient(135deg, #111 0%, #000 100%)' },
-];
+import { PRESET_META, PRESET_ORDER } from '../utils/captionPresetsGenerated';
+
+/**
+ * Preset cards for the picker, derived from the generated table so adding a
+ * preset to shared/caption_presets.json surfaces it in the UI automatically.
+ */
+export const BUILT_IN_PRESETS_DATA = PRESET_ORDER.map(id => ({
+  id,
+  name: PRESET_META[id].name,
+  cardBg: 'linear-gradient(135deg, #111 0%, #000 100%)',
+}));
 (window as any).BUILT_IN_PRESETS = BUILT_IN_PRESETS_DATA;
 const EXPORTED_PRESETS = BUILT_IN_PRESETS_DATA;
 
@@ -89,6 +82,7 @@ export function CaptionSettingsSection({ config = DEFAULT_CAPTION_CONFIG, onChan
               <option value="none">Off</option>
               <option value="auto">Auto (Main Audio)</option>
               <option value="srt">Upload .SRT</option>
+              <option value="manual">Manual entry</option>
             </select>
           )}
         </div>
@@ -104,6 +98,14 @@ export function CaptionSettingsSection({ config = DEFAULT_CAPTION_CONFIG, onChan
 
       {config.source !== 'none' && (
         <div className="liquid-glass-card rounded-xl overflow-hidden flex flex-col shadow-sm">
+          {config.source === 'manual' && (
+            <ManualCaptionEditor
+              cues={config.manualCues || []}
+              onChange={cues => onChange({ ...config, manualCues: cues })}
+              disabled={disabled}
+            />
+          )}
+
           {config.source === 'srt' && (
             <div className="p-3 border-b border-gray-200 dark:border-gray-800 bg-orange-50/50 dark:bg-orange-500/5">
               <div className="flex flex-col gap-2">
