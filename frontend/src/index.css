@@ -11,6 +11,7 @@
 
 :root {
   color-scheme: dark;
+
   
   /* ── Background surfaces ── */
   --bg-app:           #080c14;
@@ -78,6 +79,7 @@
 /* ── Light mode ──────────────────────────────────────────────────────────── */
 html:not(.dark) {
   color-scheme: light;
+
   
   --bg-app:           #f0f4f8;
   --bg-sidebar:       #e8edf5;
@@ -234,12 +236,51 @@ html:not(.dark) {
   }
 
   /* ── Form controls ── */
+  /*
+   * Shared primitive used by 13 files. `.form-select` previously rendered the
+   * browser's native dropdown arrow (appearance: auto), which read as
+   * unfinished next to the app's custom cards and gradient buttons — enough
+   * that CaptionSettingsSection had hand-rolled its own inline SVG chevron.
+   * The chevron is now part of the primitive, so every page gets it.
+   *
+   * The arrow is a CSS variable holding a complete url() rather than a bare
+   * colour, because a data-URI can't interpolate a var. Two variants keep it
+   * legible on both themes; it brightens on hover/focus to match the border.
+   */
   .form-select, .form-input {
     @apply w-full rounded-xl px-3 py-2 text-sm
            focus:outline-none transition-all duration-150;
     background-color: var(--bg-input);
     border: 1px solid var(--border-input);
     color: var(--text-primary);
+  }
+  .form-select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    /* Room for the chevron so long option text never runs underneath it. */
+    padding-right: 2.25rem;
+    /* appearance:none drops the control's intrinsic height, so the box is now
+       pure CSS math: padding + line-height + border. Pinning line-height (not
+       height) keeps the default control at its original 36px while leaving
+       pages that deliberately use a compact select — TextOverlayPanel,
+       StudioTemplatesPage, StudioHistoryPage all use py-1/py-1.5 — free to
+       stay compact. A fixed height was tried first and flattened all of them
+       to 36px. */
+    line-height: 1.125rem;
+    /* One colour for both themes, deliberately. #64748b is exactly the app's
+       --text-muted, which is already identical in dark and light, so this is
+       the same grey the form labels use rather than a compromise.
+       A per-theme chevron was tried and reverted: Chromium does not
+       invalidate an already-resolved data-URI background-image when an
+       ancestor's class changes, so switching theme live left every chevron
+       at the previous theme's colour until a page reload. A single colour
+       removes that whole failure mode. */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 12px 12px;
+    cursor: pointer;
   }
   .form-select:focus, .form-input:focus {
     border-color: var(--accent-primary);
@@ -255,6 +296,13 @@ html:not(.dark) {
   .form-select:disabled, .form-input:disabled {
     opacity: 0.45;
     cursor: not-allowed;
+  }
+  /* Native option lists are OS-drawn; set an explicit background so the
+     popup doesn't inherit a transparent parent on Linux/Windows. */
+  .form-select option,
+  .form-select optgroup {
+    background-color: var(--bg-elevated);
+    color: var(--text-primary);
   }
 
   .form-label {

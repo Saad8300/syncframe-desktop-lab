@@ -330,7 +330,7 @@ export default function StudioTemplatesPage({ onUseTemplate }: StudioTemplatesPa
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           <div className="flex items-center gap-2">
             <IconFilter size={14} className="text-[var(--text-muted)]" />
-            <select className="form-select text-xs py-1.5 pl-2 pr-6 bg-[var(--bg-input)]" value={toolFilter} onChange={e => setToolFilter(e.target.value as any)}>
+            <select className="form-select text-xs py-1.5 pl-2 pr-8 bg-[var(--bg-input)]" value={toolFilter} onChange={e => setToolFilter(e.target.value as any)}>
               <option value="all">All Tools</option>
               <option value="image">Image Timeline</option>
               <option value="video">Video Timeline</option>
@@ -341,19 +341,19 @@ export default function StudioTemplatesPage({ onUseTemplate }: StudioTemplatesPa
             </select>
           </div>
 
-          <select className="form-select text-xs py-1.5 pl-2 pr-6 bg-[var(--bg-input)]" value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
+          <select className="form-select text-xs py-1.5 pl-2 pr-8 bg-[var(--bg-input)]" value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
             <option value="all">All Categories</option>
             {categories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
 
-          <select className="form-select text-xs py-1.5 pl-2 pr-6 bg-[var(--bg-input)]" value={typeFilter} onChange={e => setTypeFilter(e.target.value as any)}>
+          <select className="form-select text-xs py-1.5 pl-2 pr-8 bg-[var(--bg-input)]" value={typeFilter} onChange={e => setTypeFilter(e.target.value as any)}>
             <option value="all">All Types</option>
             <option value="built-in">Built-in</option>
             <option value="saved">Saved</option>
             <option value="favorites">Favorites</option>
           </select>
 
-          <select className="form-select text-xs py-1.5 pl-2 pr-6 bg-[var(--bg-input)]" value={sortOrder} onChange={e => setSortOrder(e.target.value as any)}>
+          <select className="form-select text-xs py-1.5 pl-2 pr-8 bg-[var(--bg-input)]" value={sortOrder} onChange={e => setSortOrder(e.target.value as any)}>
             <option value="newest">Newest</option>
             <option value="oldest">Oldest</option>
             <option value="name">Name (A-Z)</option>
