@@ -400,7 +400,10 @@ export default function VideoTimelinePage({ onNavigate }: { onNavigate?: (view: 
       const newFile = new File([blob], file.name, { type: 'text/csv' });
       setCsvFile(newFile);
     } catch (err) {
-      alert("Failed to read CSV/Excel file.");
+      // Surface the reader's own message: for an Excel workbook it names the
+      // exact cells whose timestamps were stored as clock times and says how
+      // to fix them. A generic string would throw that away.
+      alert("Failed to read CSV/Excel file.\n\n" + (err instanceof Error ? err.message : String(err)));
       setCsvFile(null);
     }
   };
