@@ -81,6 +81,13 @@ import credit_estimator
 from access_control import check_access
 import auth_helpers
 import tts_helpers
+from plan_limits import (
+    TTS_CHARS_PER_SECOND,
+    TTS_SHORT_FORM_MAX_CHARS,
+    TTS_LONG_FORM_MAX_CHARS,
+    TTS_LONG_FORM_CHUNK_SIZE,
+    TTS_TRANSLATION_CHARS_PER_CREDIT,
+)
 from pydantic import BaseModel
 
 
@@ -1884,17 +1891,53 @@ async def generate(
 
 
 # ---------------------------------------------------------------------------
-# Text to Speech Routes (Piper — local, offline, CPU)
+# Text to Speech Routes (Local Piper offline + Cloud edge-tts online)
 # ---------------------------------------------------------------------------
 
 @app.get("/api/tts/voices")
 def api_tts_voices():
-    """Full Piper voice catalog for the voice picker (grouped client-side)."""
+    """
+    Merged voice catalog (Local Piper + Cloud edge-tts) for the picker.
+    Cloud voices need a network call to enumerate; if that fails the Local
+    catalog is still returned with cloud_available=false so the tool degrades
+    instead of erroring.
+    """
     try:
-        return JSONResponse(content={"voices": tts_helpers.list_voices()})
+        voices = tts_helpers.list_voices()
+        cloud_available = any(v["engine"] == tts_helpers.ENGINE_EDGE for v in voices)
+        return JSONResponse(content={
+            "voices": voices,
+            "cloud_available": cloud_available,
+            "short_form_max_chars": TTS_SHORT_FORM_MAX_CHARS,
+            "long_form_max_chars": TTS_LONG_FORM_MAX_CHARS,
+            "chars_per_second": TTS_CHARS_PER_SECOND,
+            "translation_chars_per_credit": TTS_TRANSLATION_CHARS_PER_CREDIT,
+        })
     except Exception as e:
         logger.error(f"Failed to list TTS voices: {e}")
         raise HTTPException(500, f"Could not load voice catalog: {e}")
+
+
+class DetectLanguageReq(BaseModel):
+    text: str
+    voice_id: Optional[str] = None
+
+
+@app.post("/api/tts/detect-language")
+def api_tts_detect_language(req: DetectLanguageReq):
+    """
+    Detect the script's language and report whether it differs from the
+    selected voice's language, so the UI can offer Auto-Translate only when
+    it's actually relevant. Fully offline (py3langid).
+    """
+    detected = tts_helpers.detect_language(req.text or "")
+    voice_lang = tts_helpers.voice_language_code(req.voice_id) if req.voice_id else ""
+    mismatch = bool(detected and voice_lang and detected != voice_lang)
+    return JSONResponse(content={
+        "detected_language": detected,
+        "voice_language": voice_lang,
+        "mismatch": mismatch,
+    })
 
 
 @app.post("/api/jobs/start-text-to-speech")
@@ -1903,12 +1946,20 @@ async def jobs_start_text_to_speech(
     voice_id: str = Form(...),
     speed: float = Form(1.0),
     output_name: Optional[str] = Form(None),
+    output_format: str = Form("wav"),
+    mode: str = Form("short_form"),
+    auto_translate: bool = Form(False),
     credit_cost: Optional[int] = Form(None),
     authorization: Optional[str] = Header(None),
 ):
     """
     Start a Text to Speech job. Returns {job_id}; the client polls
     GET /api/jobs/{job_id}/status, matching Script Timestamp's flow.
+
+    mode="short_form" synthesizes in one pass; mode="long_form" chunks the
+    text, synthesizes each chunk, and concatenates, reporting per-chunk
+    progress. auto_translate translates the script into the voice's language
+    before synthesis.
     """
     # ── Backend Access Control ──────────────────────────────────────
     # plan_id resolved server-side from the caller's own Supabase token
@@ -1925,6 +1976,19 @@ async def jobs_start_text_to_speech(
 
     if not (text or "").strip():
         raise HTTPException(400, "Text is required.")
+
+    fmt = (output_format or "wav").lower()
+    if fmt not in tts_helpers.SUPPORTED_FORMATS:
+        raise HTTPException(400, f"Unsupported output format '{output_format}'. Use wav or mp3.")
+
+    mode_safe = "long_form" if str(mode).lower() == "long_form" else "short_form"
+    limit = TTS_LONG_FORM_MAX_CHARS if mode_safe == "long_form" else TTS_SHORT_FORM_MAX_CHARS
+    if len(text) > limit:
+        raise HTTPException(
+            400,
+            f"Text is {len(text):,} characters, over the {limit:,} limit for "
+            f"{'Long Form' if mode_safe == 'long_form' else 'Short Form'}."
+        )
 
     job_id = f"tts_{uuid.uuid4().hex[:8]}"
     state = _new_job(job_id)
@@ -1945,18 +2009,43 @@ async def jobs_start_text_to_speech(
                     state["current_step"] = step
                     state["progress"] = pct
 
-            out_name = make_clean_filename(output_name or "", "speech", ".wav")
+            out_name = make_clean_filename(output_name or "", "speech", f".{fmt}")
             out_dir = OUTPUTS_DIR / "audio"
             out_dir.mkdir(parents=True, exist_ok=True)
             out_path = str(out_dir / out_name)
 
-            meta = tts_helpers.synthesize_to_file(
-                text=text,
-                voice_id=voice_id,
-                output_path=out_path,
-                speed=speed,
-                progress_callback=_progress_cb,
-            )
+            spoken_text = text
+            translated_from = None
+            if auto_translate:
+                target = tts_helpers.voice_language_code(voice_id)
+                _progress_cb("Translating script…", 3)
+                translated_from = tts_helpers.detect_language(text)
+                spoken_text = tts_helpers.translate_text(text, target)
+
+            if mode_safe == "long_form":
+                meta = tts_helpers.synthesize_long_form(
+                    text=spoken_text,
+                    voice_id=voice_id,
+                    output_path=out_path,
+                    speed=speed,
+                    chunk_size=TTS_LONG_FORM_CHUNK_SIZE,
+                    progress_callback=_progress_cb,
+                    cancel_check=lambda: state["cancel_event"].is_set(),
+                )
+            else:
+                meta = tts_helpers.synthesize_to_file(
+                    text=spoken_text,
+                    voice_id=voice_id,
+                    output_path=out_path,
+                    speed=speed,
+                    progress_callback=_progress_cb,
+                )
+            meta["mode"] = mode_safe
+            if auto_translate:
+                meta["translated"] = True
+                meta["translated_from"] = translated_from
+                meta["translated_to"] = tts_helpers.voice_language_code(voice_id)
+                meta["source_char_count"] = len(text)
 
             try:
                 history_store.add_history(
@@ -1965,15 +2054,21 @@ async def jobs_start_text_to_speech(
                     output_name=out_name,
                     output_type="audio",
                     output_url=f"/outputs/audio/{out_name}",
-                    file_extension="wav",
+                    file_extension=fmt,
                     duration_seconds=meta.get("duration_seconds"),
                     file_size_bytes=meta.get("file_size_bytes"),
                     metadata={
                         "voice_id": voice_id,
-                        "voice_engine": "piper",
+                        "voice_engine": meta.get("engine"),
                         "speed": meta.get("speed"),
                         "char_count": meta.get("char_count"),
                         "sample_rate": meta.get("sample_rate"),
+                        "output_format": meta.get("output_format"),
+                        "mode": mode_safe,
+                        "total_chunks": meta.get("total_chunks", 1),
+                        "translated": bool(auto_translate),
+                        "translated_from": meta.get("translated_from"),
+                        "translated_to": meta.get("translated_to"),
                     },
                     credit_cost=credit_cost,
                 )
@@ -2017,6 +2112,9 @@ async def api_batch_job_text_to_speech(
     voice_id: str = Form(...),
     speed: float = Form(1.0),
     output_name: Optional[str] = Form(None),
+    output_format: str = Form("wav"),
+    mode: str = Form("short_form"),
+    auto_translate: bool = Form(False),
     cjid:              Optional[str] = Form(None),
     credit_cost:       Optional[float] = Form(None),
     credit_reserved:   Optional[str] = Form(None),
@@ -2035,6 +2133,9 @@ async def api_batch_job_text_to_speech(
             "voice_id": voice_id,
             "speed": float(speed or 1.0),
             "output_name": output_name,
+            "output_format": (output_format or "wav").lower(),
+            "mode": "long_form" if str(mode).lower() == "long_form" else "short_form",
+            "auto_translate": bool(auto_translate),
             "cjid": cjid,
             "credit_cost": credit_cost,
             "credit_reserved": str(credit_reserved).strip().lower() == "true" if credit_reserved is not None else False,

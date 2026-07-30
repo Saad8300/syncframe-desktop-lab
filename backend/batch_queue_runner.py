@@ -20,7 +20,7 @@ from video_timeline_generator import generate_video_timeline, VideoTimelineCance
 from media_timeline_generator import generate_media_timeline, MediaTimelineCancelled
 from audio_helpers import prepare_single_audio, prepare_zip_audio, merge_audio_parts_in_order
 from transcription_helpers import transcribe_audio_backend, format_output
-from tts_helpers import synthesize_to_file
+from tts_helpers import synthesize_to_file, synthesize_long_form, voice_language_code, translate_text, detect_language, SUPPORTED_FORMATS
 
 logger = logging.getLogger(__name__)
 
@@ -684,7 +684,13 @@ def _process_text_to_speech_job(job: Dict[str, Any]):
         batch_queue_store.update_job(job_id, {"progress": pct, "message": step})
 
     try:
-        out_name = make_clean_filename(job.get("output_name", ""), "speech", ".wav")
+        fmt = str(config.get("output_format") or "wav").lower()
+        if fmt not in SUPPORTED_FORMATS:
+            fmt = "wav"
+        mode = "long_form" if str(config.get("mode", "")).lower() == "long_form" else "short_form"
+        auto_translate = bool(config.get("auto_translate"))
+
+        out_name = make_clean_filename(job.get("output_name", ""), "speech", f".{fmt}")
         base_name, extn = os.path.splitext(out_name)
         job_id_short = job_id.split("_")[-1][:8] if "_" in job_id else job_id[:8]
         out_name = f"{base_name}_{job_id_short}{extn}"
@@ -693,13 +699,32 @@ def _process_text_to_speech_job(job: Dict[str, Any]):
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = str(out_dir / out_name)
 
-        meta = synthesize_to_file(
-            text=text,
-            voice_id=voice_id,
-            output_path=out_path,
-            speed=float(config.get("speed", 1.0)),
-            progress_callback=update_progress,
-        )
+        spoken_text = text
+        translated_from = None
+        if auto_translate:
+            update_progress("Translating script…", 3)
+            translated_from = detect_language(text)
+            spoken_text = translate_text(text, voice_language_code(voice_id))
+
+        if mode == "long_form":
+            from plan_limits import TTS_LONG_FORM_CHUNK_SIZE
+            meta = synthesize_long_form(
+                text=spoken_text,
+                voice_id=voice_id,
+                output_path=out_path,
+                speed=float(config.get("speed", 1.0)),
+                chunk_size=TTS_LONG_FORM_CHUNK_SIZE,
+                progress_callback=update_progress,
+                cancel_check=lambda: runner_state.current_cancel_event.is_set(),
+            )
+        else:
+            meta = synthesize_to_file(
+                text=spoken_text,
+                voice_id=voice_id,
+                output_path=out_path,
+                speed=float(config.get("speed", 1.0)),
+                progress_callback=update_progress,
+            )
 
         try:
             history_store.add_history(
@@ -708,7 +733,7 @@ def _process_text_to_speech_job(job: Dict[str, Any]):
                 output_name=out_name,
                 output_type="audio",
                 output_url=f"/outputs/audio/{out_name}",
-                file_extension="wav",
+                file_extension=fmt,
                 duration_seconds=meta.get("duration_seconds"),
                 file_size_bytes=meta.get("file_size_bytes"),
                 metadata={
@@ -716,10 +741,16 @@ def _process_text_to_speech_job(job: Dict[str, Any]):
                     "source_tool": "text_to_speech",
                     "generated_via": "batch_queue",
                     "voice_id": voice_id,
-                    "voice_engine": "piper",
+                    "voice_engine": meta.get("engine"),
                     "speed": meta.get("speed"),
                     "char_count": meta.get("char_count"),
                     "sample_rate": meta.get("sample_rate"),
+                    "output_format": meta.get("output_format"),
+                    "mode": mode,
+                    "total_chunks": meta.get("total_chunks", 1),
+                    "translated": auto_translate,
+                    "translated_from": translated_from,
+                    "translated_to": voice_language_code(voice_id) if auto_translate else None,
                 },
                 credit_cost=config.get("credit_cost"),
             )

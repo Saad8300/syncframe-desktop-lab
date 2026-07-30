@@ -62,6 +62,17 @@ hiddenimports += [
 tmp_ret = collect_all('onnxruntime')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
+# Cloud TTS engine + Auto-Translate + offline language detection. All small
+# pure-Python packages, but each is imported lazily inside functions so
+# PyInstaller's static analysis can miss them. py3langid ships its own
+# compressed language model as package data.
+hiddenimports += [
+    'edge_tts', 'aiohttp',
+    'deep_translator', 'deep_translator.google',
+    'py3langid',
+]
+datas += collect_data_files('py3langid')
+
 # The voice catalog index is read at runtime via sys._MEIPASS (see
 # tts_helpers._index_path) to populate the voice picker.
 datas += [(os.path.join(SPECPATH, 'piper_voices_index.json'), '.')]
