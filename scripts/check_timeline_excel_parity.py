@@ -38,7 +38,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 from timeline_time_parser import parse_timeline_csv  # noqa: E402
 
 # (label, how Excel stores the END cell, equivalent CSV end text,
-#  expected parsed start, expected parsed end)
+#  row start constant, expected parsed start, expected parsed end)
 #
 # Rows are compared after parse_timeline_csv, NOT after parse_time_to_seconds.
 # That matters: parse_time_to_seconds returns 5.0 for both "+5" and "5", so a
@@ -46,39 +46,49 @@ from timeline_time_parser import parse_timeline_csv  # noqa: E402
 # which is exactly how the relative-end bug shipped. Every row here fixes
 # start at 15 so a relative end (20.0) is distinguishable from an absolute
 # one (5.0, which is invalid and would be rejected).
-ROW_START = "15"
+ABS_START = "0"    # absolute ends only need to exceed the start
+REL_START = "10"   # non-zero so a relative end is distinguishable
 
 CASES = [
-    ("plain int 5",           {"t": "n", "v": 20},                        "20",     15.0, 20.0),
-    ("plain decimal 20.5",    {"t": "n", "v": 20.5},                      "20.5",   15.0, 20.5),
-    ("number shown 2dp",      {"t": "n", "v": 30, "z": "0.00"},           "30",     15.0, 30.0),
-    # THE REGRESSION THIS EXISTS FOR: Excel turns a typed "+5" into a formula
-    # and caches the bare number 5. Reading the cache alone yields an absolute
-    # 5s end, which is before the 15s start and gets rejected outright.
-    ("+5 relative (formula)", {"t": "n", "v": 5, "f": "+5"},              "+5",     15.0, 20.0),
-    ("+5.5 relative",         {"t": "n", "v": 5.5, "f": "+5.5"},          "+5.5",   15.0, 20.5),
-    # A real computation: the cached result is the intended absolute value.
-    ("=A1+5 computed",        {"t": "n", "v": 20, "f": "A1+5"},           "20",     15.0, 20.0),
-    # Text-typed cells (user pre-formatted the column as Text).
-    ("text 0:30",             {"t": "s", "v": "0:30"},                    "0:30",   15.0, 30.0),
-    ("text 1:30.5",           {"t": "s", "v": "1:30.5"},                  "1:30.5", 15.0, 90.5),
-    ("text 2m30s",            {"t": "s", "v": "2m30s"},                   "2m30s",  15.0, 150.0),
-    ("text +5 relative",      {"t": "s", "v": "+5"},                      "+5",     15.0, 20.0),
-    ("text w/ apostrophe",    {"t": "s", "v": "20.5", "w": "20.5"},       "20.5",   15.0, 20.5),
+    # --- every absolute format the CSV parser accepts, from a TEXT cell ------
+    ("text 5",                {"t": "s", "v": "5"}, "5", ABS_START, 0.0, 5.0),
+    ("text 5.5",              {"t": "s", "v": "5.5"}, "5.5", ABS_START, 0.0, 5.5),
+    ("text 0.5",              {"t": "s", "v": "0.5"}, "0.5", ABS_START, 0.0, 0.5),
+    ("text 0.1",              {"t": "s", "v": "0.1"}, "0.1", ABS_START, 0.0, 0.1),
+    ("text 0.01",             {"t": "s", "v": "0.01"}, "0.01", ABS_START, 0.0, 0.01),
+    ("text 0.001",            {"t": "s", "v": "0.001"}, "0.001", ABS_START, 0.0, 0.001),
+    ("text 00:05",            {"t": "s", "v": "00:05"}, "00:05", ABS_START, 0.0, 5.0),
+    ("text 1:20",             {"t": "s", "v": "1:20"}, "1:20", ABS_START, 0.0, 80.0),
+    ("text 00:01:20",         {"t": "s", "v": "00:01:20"}, "00:01:20", ABS_START, 0.0, 80.0),
+    ("text 90s",              {"t": "s", "v": "90s"}, "90s", ABS_START, 0.0, 90.0),
+    ("text 1m30s",            {"t": "s", "v": "1m30s"}, "1m30s", ABS_START, 0.0, 90.0),
+    # --- relative end times ---------------------------------------------------
+    ("text +5",               {"t": "s", "v": "+5"}, "+5", REL_START, 10.0, 15.0),
+    ("text +0.5",             {"t": "s", "v": "+0.5"}, "+0.5", REL_START, 10.0, 10.5),
+    ("text +0.1",             {"t": "s", "v": "+0.1"}, "+0.1", REL_START, 10.0, 10.1),
+    ("text +0.01",            {"t": "s", "v": "+0.01"}, "+0.01", REL_START, 10.0, 10.01),
+    ("text +0.001",           {"t": "s", "v": "+0.001"}, "+0.001", REL_START, 10.0, 10.001),
+    ("text +1m30s",           {"t": "s", "v": "+1m30s"}, "+1m30s", REL_START, 10.0, 100.0),
+    # --- plain NUMERIC cells (General format) ---------------------------------
+    ("num 20",                {"t": "n", "v": 20}, "20", ABS_START, 0.0, 20.0),
+    ("num 20.5",              {"t": "n", "v": 20.5}, "20.5", ABS_START, 0.0, 20.5),
+    ("num 30 shown 2dp",      {"t": "n", "v": 30, "z": "0.00"}, "30", ABS_START, 0.0, 30.0),
+    # --- formula cells: the leading sign only survives in `f` ------------------
+    ("+5 formula",            {"t": "n", "v": 5, "f": "+5"}, "+5", REL_START, 10.0, 15.0),
+    ("+5.5 formula",          {"t": "n", "v": 5.5, "f": "+5.5"}, "+5.5", REL_START, 10.0, 15.5),
+    ("=A1+5 computed",        {"t": "n", "v": 20, "f": "A1+5"}, "20", ABS_START, 0.0, 20.0),
+    # --- TIME-FORMATTED numeric cells, resolved by the one-hour rule -----------
+    # Day-fraction reading would be absurd (>1h), so these are literal seconds.
+    ("time-fmt 0.5",          {"t": "n", "v": 0.5,  "z": "h:mm:ss"}, "0.5", ABS_START, 0.0, 0.5),
+    ("time-fmt 0.1",          {"t": "n", "v": 0.1,  "z": "h:mm:ss"}, "0.1", ABS_START, 0.0, 0.1),
+    ("time-fmt 5",            {"t": "n", "v": 5,    "z": "h:mm:ss"}, "5", ABS_START, 0.0, 5.0),
+    ("time-fmt 90",           {"t": "n", "v": 90,   "z": "h:mm:ss"}, "90", ABS_START, 0.0, 90.0),
+    ("time-fmt 20.5",         {"t": "n", "v": 20.5, "z": "h:mm:ss"}, "20.5", ABS_START, 0.0, 20.5),
+    # Day-fraction reading is plausible (<=1h), so these stay clock times.
+    ("genuine 0:01:20",       {"t": "n", "v": 80/86400.0,   "z": "h:mm:ss"}, "00:01:20", ABS_START, 0.0, 80.0),
+    ("genuine 0:00:05",       {"t": "n", "v": 5/86400.0,    "z": "h:mm:ss"}, "00:05", ABS_START, 0.0, 5.0),
+    ("genuine 1:00:00",       {"t": "n", "v": 3600/86400.0, "z": "h:mm:ss"}, "1:00:00", ABS_START, 0.0, 3600.0),
 ]
-
-# Time-formatted NUMERIC cells are genuinely ambiguous: {t:'n', v:0.5,
-# z:'h:mm:ss'} is byte-identical whether the user meant half a second or half
-# a day. These must be REFUSED, never silently converted.
-AMBIGUOUS_CASES = [
-    ("0.5 in time-fmt cell",   {"t": "n", "v": 0.5, "z": "h:mm:ss"}),
-    ("0.25 in time-fmt cell",  {"t": "n", "v": 0.25, "z": "h:mm:ss"}),
-    ("time serial 0:30",       {"t": "n", "v": 30 / 1440.0, "z": "h:mm"}),
-    ("AM/PM displayed",        {"t": "n", "v": 30 / 1440.0, "z": "h:mm AM/PM"}),
-    ("time serial 1:02:03",    {"t": "n", "v": 3723 / 86400.0, "z": "h:mm:ss"}),
-]
-
-AMBIGUOUS_MARKER = "\u0000AMBIGUOUS_TIME"
 
 # A single Node driver that bundles the TypeScript reader and runs cellToText
 # over the supplied cells.
@@ -172,9 +182,9 @@ def xlsx_cell_texts(cells):
         return json.loads(run.stdout)
 
 
-def parse_row(end_text):
+def parse_row(end_text, row_start):
     """Parse a one-row timeline through the real backend parser."""
-    csv = f"start,end,image{chr(10)}{ROW_START},{end_text},a.png{chr(10)}"
+    csv = f"start,end,image{chr(10)}{row_start},{end_text},a.png{chr(10)}"
     ok, rows, _dur, errs, _warn, _norm = parse_timeline_csv(csv, "image")
     if not ok or not rows:
         return None, (errs[0] if errs else "rejected")
@@ -194,26 +204,28 @@ def main():
         return 0
 
     texts = xlsx_cell_texts([c[1] for c in CASES])
-    amb_texts = xlsx_cell_texts([c[1] for c in AMBIGUOUS_CASES])
     failures = []
 
     print("PARITY - rows parsed from XLSX must match rows parsed from CSV")
-    print(f"(every row starts at {ROW_START}s, so a relative end is distinguishable)")
+    print(f"(absolute rows start at {ABS_START}s, relative rows at {REL_START}s)")
     print(f"{'case':24} {'CSV end':10} {'CSV row':>16}  | {'XLSX end':10} {'XLSX row':>16}  verdict")
     print("-" * 104)
-    for (label, _cell, csv_text, exp_start, exp_end), xlsx_text in zip(CASES, texts):
-        csv_row, csv_err = parse_row(csv_text)
-        xlsx_row, xlsx_err = parse_row(xlsx_text) if xlsx_text else (None, "empty cell")
+    for (label, _cell, csv_text, row_start, exp_start, exp_end), xlsx_text in zip(CASES, texts):
+        csv_row, csv_err = parse_row(csv_text, row_start)
+        xlsx_row, xlsx_err = parse_row(xlsx_text, row_start) if xlsx_text else (None, "empty cell")
 
+        # 1e-6, not 0.01: the format list includes 0.001 and +0.001, which a
+        # 0.01 tolerance would pass even if the value came back as zero.
+        TOL = 1e-6
         ok = (csv_row is not None and xlsx_row is not None
-              and abs(csv_row[0] - exp_start) < 0.01 and abs(csv_row[1] - exp_end) < 0.01
-              and abs(xlsx_row[0] - csv_row[0]) < 0.01
-              and abs(xlsx_row[1] - csv_row[1]) < 0.01)
+              and abs(csv_row[0] - exp_start) < TOL and abs(csv_row[1] - exp_end) < TOL
+              and abs(xlsx_row[0] - csv_row[0]) < TOL
+              and abs(xlsx_row[1] - csv_row[1]) < TOL)
         if not ok:
             failures.append(label)
 
         def fmt(row, err):
-            return f"{row[0]:.1f}->{row[1]:.1f}" if row else f"REJECTED"
+            return f"{row[0]:g}->{row[1]:g}" if row else "REJECTED"
         print(f"{label:24} {csv_text:10} {fmt(csv_row, csv_err):>16}  | "
               f"{(xlsx_text or '(empty)'):10} {fmt(xlsx_row, xlsx_err):>16}  "
               f"{'match' if ok else '*** DIVERGES ***'}")
@@ -221,43 +233,32 @@ def main():
             print(f"{'':24}   csv: {csv_err or '-'} | xlsx: {xlsx_err or '-'}")
 
     print()
-    print("REFUSAL - ambiguous time-formatted numeric cells must never be guessed at")
-    print("-" * 104)
-    for (label, _cell), text in zip(AMBIGUOUS_CASES, amb_texts):
-        refused = text == AMBIGUOUS_MARKER
-        if not refused:
-            failures.append(label)
-            row, err = parse_row(text)
-            print(f"{label:24} NOT REFUSED -> {text!r} parses as {row}  *** UNSAFE ***")
-        else:
-            print(f"{label:24} refused with an actionable error  OK")
-
     # Two named guards for the specific bugs that shipped.
     print()
-    idx = [i for i, c in enumerate(AMBIGUOUS_CASES) if c[0] == "0.5 in time-fmt cell"][0]
-    if amb_texts[idx] != AMBIGUOUS_MARKER:
-        print("REGRESSION: 0.5s in a time-formatted cell was not refused. "
-              "This is the 43,200s bug.")
+    didx = [i for i, c in enumerate(CASES) if c[0] == "time-fmt 0.5"][0]
+    drow, _ = parse_row(texts[didx], CASES[didx][3])
+    if drow is None or abs(drow[1] - 0.5) > 0.001:
+        print(f"REGRESSION: 0.5 in a time-formatted cell produced {drow} "
+              f"instead of an end of 0.5s. This is the 43,200s bug.")
         failures.append("0.5s guard")
     else:
-        print("GUARD OK: 0.5s in a time-formatted cell is refused, "
-              "not silently turned into 43,200s.")
+        print("GUARD OK: 0.5 in a time-formatted cell reads as 0.5s, "
+              "not 43,200s.")
 
-    ridx = [i for i, c in enumerate(CASES) if c[0] == "+5 relative (formula)"][0]
-    rel_row, _ = parse_row(texts[ridx])
-    if rel_row is None or abs(rel_row[1] - 20.0) > 0.01:
+    ridx = [i for i, c in enumerate(CASES) if c[0] == "+5 formula"][0]
+    rel_row, _ = parse_row(texts[ridx], CASES[ridx][3])
+    if rel_row is None or abs(rel_row[1] - 15.0) > 0.01:
         print(f"REGRESSION: a '+5' relative end from Excel produced {rel_row} "
-              f"instead of 15.0->20.0. The leading '+' was lost.")
+              f"instead of 10.0->15.0. The leading '+' was lost.")
         failures.append("+5 relative guard")
     else:
         print("GUARD OK: a '+5' relative end from Excel stays relative "
-              "(15.0->20.0), not an absolute 5s.")
+              "(10.0->15.0), not an absolute 5s.")
 
     if failures:
         print(f"\nFAILED: {len(failures)} case(s) - {', '.join(failures)}")
         return 1
-    print(f"\nAll {len(CASES)} parity rows match and all "
-          f"{len(AMBIGUOUS_CASES)} ambiguous cases are refused.")
+    print(f"\nAll {len(CASES)} parity rows match between CSV and XLSX.")
     return 0
 
 

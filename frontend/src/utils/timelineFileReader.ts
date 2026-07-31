@@ -12,11 +12,15 @@ export interface TimelineFileText {
 const TIME_FORMAT_RE = /(\[)?[hH]+(\]|:)|AM\/PM|A\/P|\bmm?\b.*\bss\b|yy|dd/
 
 /**
- * Marker emitted for a time-formatted numeric cell, whose intent cannot be
- * recovered from the file. sheetToCsvText turns these into a hard error naming
- * the offending cells rather than letting a wrong duration through.
+ * Longest duration a single timeline segment may be when resolving the Excel
+ * Time-format ambiguity below. One hour sits far above any realistic image or
+ * clip segment, and far below the multi-hour readings the mistaken
+ * interpretation produces.
  */
-export const AMBIGUOUS_TIME = '\u0000AMBIGUOUS_TIME'
+const MAX_SEGMENT_SECONDS = 3600
+
+/** Raw cell value above which the day-fraction reading exceeds one hour. */
+const MAX_SERIAL_FRACTION = MAX_SEGMENT_SECONDS / 86400   // 0.0416667
 
 /** Excel serial (fraction of a 24h day) -> seconds. */
 function serialToSeconds(serial: number): number {
@@ -54,8 +58,8 @@ function csvEscape(v: string): string {
  *      round-tripped through its formatted string. Now read as the raw number.
  *   3. Worst: a plain number in a time-formatted cell. `0.5` (half a second)
  *      displays as `12:00:00` and parsed as 43,200 seconds — wrong by 86,400x,
- *      and unlike the others it "succeeded" silently. That whole class is now
- *      refused rather than guessed at; see AMBIGUOUS_TIME.
+ *      and unlike the others it "succeeded" silently. Resolved by the one-hour
+ *      plausibility rule in the numeric branch below.
  *
  * Guarded by scripts/check_timeline_excel_parity.py.
  */
@@ -85,18 +89,30 @@ export function cellToText(cell: XLSX.CellObject | undefined): string {
   if (cell.t === 'n' && typeof cell.v === 'number') {
     const fmt = typeof cell.z === 'string' ? cell.z : ''
     if (fmt && TIME_FORMAT_RE.test(fmt)) {
-      // AMBIGUOUS — and deliberately not guessed at.
+      // A time-formatted numeric cell is byte-identical whether the user typed
+      // a clock time or a plain number of seconds: Excel stores {t:'n', v:0.5,
+      // z:'h:mm:ss'} for both `0.5` and `12:00:00`. It is resolved by asking
+      // which reading is plausible for a timeline segment.
       //
-      // A time-formatted numeric cell is byte-identical whether the user
-      // typed 0.5 meaning half a second, or typed 12:00:00 meaning half a
-      // day. Excel stores {t:'n', v:0.5, z:'h:mm:ss'} either way. There is no
-      // signal in the file that separates them.
+      //   day-fraction reading <= 1 hour  -> a real clock time, use it
+      //   day-fraction reading  > 1 hour  -> absurd for one segment, so the
+      //                                      user meant literal seconds
       //
-      // The old code silently picked one reading and turned 0.5 seconds into
-      // 43,200 — wrong by 86,400x, with no error. Refusing is the only safe
-      // answer, and it matches how the CSV parser already handles Excel's
-      // AM/PM coercion: tell the user to format the column as Text.
-      return AMBIGUOUS_TIME
+      // 0.5 previously became 43,200s (12 hours) - wrong by 86,400x, and it
+      // "succeeded", so nothing surfaced it. Under this rule 0.5 reads as
+      // 0.5 seconds, while a genuine 0:01:26 (v=0.001) still reads as 86.4s.
+      //
+      // EDGE CASE, deliberate: raw values at or below 0.0416667 are read as
+      // clock times, so a literal 0.001 or 0.01 seconds cannot be expressed in
+      // a Time-formatted column - it would be indistinguishable from 0:01:26
+      // and 0:14:24. Sub-0.04-second segments are not a real use case, and
+      // every format still works from a Text-formatted column or a CSV. This
+      // is documented for users in TIME_FORMAT_HELP.
+      const asSeconds = serialToSeconds(cell.v)
+      if (cell.v <= MAX_SERIAL_FRACTION && asSeconds <= MAX_SEGMENT_SECONDS) {
+        return secondsToHms(asSeconds)
+      }
+      return String(cell.v)
     }
     // A plain number is a plain number, whatever decimals the cell displays.
     return String(cell.v)
@@ -120,34 +136,17 @@ export function sheetToCsvText(sheet: XLSX.WorkSheet): string {
   if (!ref) return ''
   const range = XLSX.utils.decode_range(ref)
   const lines: string[] = []
-  const ambiguous: string[] = []
 
   for (let r = range.s.r; r <= range.e.r; r++) {
     const cells: string[] = []
     for (let c = range.s.c; c <= range.e.c; c++) {
       const addr = XLSX.utils.encode_cell({ r, c })
-      const text = cellToText(sheet[addr] as XLSX.CellObject | undefined)
-      if (text === AMBIGUOUS_TIME) {
-        ambiguous.push(addr)
-        cells.push('')
-      } else {
-        cells.push(csvEscape(text))
-      }
+      cells.push(csvEscape(cellToText(sheet[addr] as XLSX.CellObject | undefined)))
     }
     // Drop fully-blank rows; the CSV parser skips them too.
     if (cells.some(v => v !== '')) lines.push(cells.join(','))
   }
 
-  if (ambiguous.length) {
-    const shown = ambiguous.slice(0, 8).join(', ')
-    const more = ambiguous.length > 8 ? ` (and ${ambiguous.length - 8} more)` : ''
-    throw new Error(
-      `Excel stored ${ambiguous.length} timestamp cell(s) as clock times, so their ` +
-      `intended duration can't be read reliably: ${shown}${more}. ` +
-      `Select the start/end columns in Excel, set their format to Text, re-enter ` +
-      `the values, and save again.`
-    )
-  }
   return lines.join('\n')
 }
 

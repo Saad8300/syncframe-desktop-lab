@@ -1,6 +1,7 @@
 // components/CsvGuide.tsx – Compact CSV template reference card
 
 import React from 'react'
+import { TIME_FORMAT_HELP } from '../utils/timeFormatHelp'
 import { IconDownload } from './icons'
 
 const TEMPLATE_CONTENT = `image,start,end,text
@@ -55,8 +56,10 @@ export default function CsvGuide() {
         <div className="p-2 rounded bg-[var(--bg-card)] border border-[var(--border-subtle)]">
           <p className="text-[10px] font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Supported time formats:</p>
           <ul className="list-disc pl-4 space-y-0.5 text-[9px] text-[var(--text-muted)]">
-            <li>5, 5.5, 00:05, 1:20, 00:01:20, 90s, 1m30s</li>
-            <li>+5, +1m30s (Use + in the end column to add from start. Example: start 00:10, end +5 means 10s to 15s)</li>
+            <li>{TIME_FORMAT_HELP.absolute}</li>
+            <li>{TIME_FORMAT_HELP.relative} ({TIME_FORMAT_HELP.relativeExample})</li>
+            <li>{TIME_FORMAT_HELP.excelNote}</li>
+            <li>{TIME_FORMAT_HELP.excelEdgeCase}</li>
           </ul>
         </div>
       </div>
