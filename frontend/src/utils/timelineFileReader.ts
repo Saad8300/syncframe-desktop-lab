@@ -62,11 +62,24 @@ function csvEscape(v: string): string {
 export function cellToText(cell: XLSX.CellObject | undefined): string {
   if (!cell) return ''
 
-  // Formula cell: prefer the cached result, fall back to the formula body.
   if (cell.t === 'e') return ''
-  if (cell.f !== undefined && cell.v === undefined && cell.w === undefined) {
+
+  // Formula cell.
+  //
+  // Typing "+5" into a default-formatted cell makes Excel treat it as a
+  // formula. It stores <f>+5</f> with a cached <v>5</v>, and SheetJS surfaces
+  // that as {t:'n', v:5, f:'+5'}. Reading the cached value alone would hand
+  // the parser "5", silently turning a RELATIVE end time (5s after the row's
+  // start) into an ABSOLUTE one - a different clip length, or a row rejected
+  // for ending before it starts. The leading sign only survives in `f`, so a
+  // bare signed literal is read from there and passed through verbatim.
+  //
+  // Anything more complex (=A1+5, =SUM(...)) is a genuine computation whose
+  // cached result IS the intended absolute number, so those fall through.
+  if (cell.f !== undefined) {
     const body = String(cell.f).trim()
-    return /^[+-]?\d+(\.\d+)?$/.test(body) ? body : ''
+    if (/^[+-]?\d+(\.\d+)?$/.test(body)) return body
+    if (cell.v === undefined && cell.w === undefined) return ''
   }
 
   if (cell.t === 'n' && typeof cell.v === 'number') {
