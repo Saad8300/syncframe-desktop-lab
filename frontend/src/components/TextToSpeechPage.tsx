@@ -24,6 +24,7 @@ import { loadSettings } from '../utils/appSettings'
 import { usePlan } from '../hooks/usePlan'
 import { useCredits } from '../hooks/useCredits'
 import { AccessLimitModal } from './billing/AccessLimitModal'
+import { VoicePicker } from './VoicePicker'
 import { estimateCredits, reserveCredits, finalizeJob } from '../lib/credits'
 import { canUseTool } from '../lib/plans'
 
@@ -125,7 +126,7 @@ export default function TextToSpeechPage() {
     return () => { cancelled = true }
   }, [])
 
-  // ── Filtered + grouped voices ─────────────────────────────────────────────
+  // ── Filtered voices (grouping now lives in VoicePicker) ───────────────────
   const languages = useMemo(
     () => Array.from(new Set(voices.map(v => v.language))).sort((a, b) => a.localeCompare(b)),
     [voices]
@@ -140,16 +141,6 @@ export default function TextToSpeechPage() {
     if (filterGender !== 'all' && v.gender !== filterGender && v.gender !== 'Unspecified') return false
     return true
   }), [voices, filterLanguage, filterGender, filterEngine])
-
-  const grouped = useMemo(() => {
-    const g = new Map<string, TtsVoice[]>()
-    for (const v of filtered) {
-      const key = v.language || 'Other'
-      if (!g.has(key)) g.set(key, [])
-      g.get(key)!.push(v)
-    }
-    return Array.from(g.entries()).sort((a, b) => a[0].localeCompare(b[0]))
-  }, [filtered])
 
   // Keep the selection valid when filters exclude the current voice.
   useEffect(() => {
@@ -542,25 +533,18 @@ export default function TextToSpeechPage() {
                   <label className="form-label mb-2">
                     Voice{voicesLoading ? ' (loading…)' : ` — ${filtered.length} match${filtered.length === 1 ? '' : 'es'}`}
                   </label>
-                  <select
-                    className="form-select"
+                  {/* Custom picker, not a native <select>: the OS renders a
+                      native dropdown's open list, so badges/grouping/hover
+                      cannot be styled and it differs between macOS and
+                      Windows. Consumes the same `filtered` list the
+                      Language/Gender/Engine selects already produce. */}
+                  <VoicePicker
+                    voices={filtered}
                     value={voiceId}
+                    onChange={setVoiceId}
+                    loading={voicesLoading}
                     disabled={voicesLoading || status === 'generating' || !filtered.length}
-                    onChange={e => setVoiceId(e.target.value)}
-                  >
-                    {grouped.map(([lang, list]) => (
-                      <optgroup key={lang} label={`${lang} (${list.length})`}>
-                        {list.map(v => (
-                          <option key={v.id} value={v.id}>
-                            {v.name} · {v.engine_label}
-                            {v.gender !== 'Unspecified' ? ` · ${v.gender}` : ''}
-                            {v.country ? ` · ${v.country}` : ''}
-                            {v.engine === 'piper' && !v.downloaded ? ' · download' : ''}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
+                  />
                   {!filtered.length && !voicesLoading && (
                     <p className="text-[11px] mt-1.5" style={{ color: 'var(--color-error)' }}>
                       No voices match these filters.
