@@ -17,7 +17,7 @@ export default function StudioSettingsPage() {
   const [sidebarItems, setSidebarItems] = useState<SidebarItemId[]>(() => loadSidebarItems())
   const [notifSettings, setNotifSettings] = useState<NotificationSettings | null>(null)
   const [showNotifications, setShowNotifications] = useState(false)
-  const [appVersion, setAppVersion] = useState<string>('1.0.0 (Web)')
+  const [appVersion, setAppVersion] = useState<string>(`${__APP_VERSION__} (Web)`)
 
   useEffect(() => {
     setSettings(loadSettings())

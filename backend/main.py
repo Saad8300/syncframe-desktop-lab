@@ -199,7 +199,7 @@ def _get_job(job_id: str) -> Optional[dict]:
 app = FastAPI(
     title="Audio Image Sync Studio",
     description="Generate perfectly timed videos from audio, ordered images, and timestamps.",
-    version="1.3.0",
+    version="2.0.0",
 )
 
 app.include_router(credit_estimator.plans_router, prefix="/api/plans")
@@ -241,7 +241,7 @@ app.mount("/outputs", StaticFiles(directory=str(OUTPUTS_DIR)), name="outputs")
 
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok", "service": "Audio Image Sync Studio", "version": "1.3.0"}
+    return {"status": "ok", "service": "Audio Image Sync Studio", "version": "2.0.0"}
 
 @app.get("/api/render-lock/status")
 async def render_lock_status():
