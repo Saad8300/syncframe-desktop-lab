@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx'
+import { parseTimeToSeconds } from './timelineTimeParser'
 
 export interface TimelineFileText {
   csvText: string
@@ -19,16 +20,6 @@ const TIME_FORMAT_RE = /(\[)?[hH]+(\]|:)|AM\/PM|A\/P|\bmm?\b.*\bss\b|yy|dd/
  */
 const MAX_SEGMENT_SECONDS = 3600
 
-/** Raw cell value above which the day-fraction reading exceeds one hour. */
-const MAX_SERIAL_FRACTION = MAX_SEGMENT_SECONDS / 86400   // 0.0416667
-
-/** Excel serial (fraction of a 24h day) -> seconds. */
-function serialToSeconds(serial: number): number {
-  // Only the time-of-day part matters; a whole-day component would be a date,
-  // which is not a valid timeline duration anyway.
-  const frac = serial - Math.floor(serial)
-  return Math.round(frac * 86400 * 1000) / 1000
-}
 
 /** Seconds -> "H:MM:SS.ss", a format the CSV parser already accepts. */
 function secondsToHms(total: number): string {
@@ -91,26 +82,46 @@ export function cellToText(cell: XLSX.CellObject | undefined): string {
     if (fmt && TIME_FORMAT_RE.test(fmt)) {
       // A time-formatted numeric cell is byte-identical whether the user typed
       // a clock time or a plain number of seconds: Excel stores {t:'n', v:0.5,
-      // z:'h:mm:ss'} for both `0.5` and `12:00:00`. It is resolved by asking
-      // which reading is plausible for a timeline segment.
+      // z:'h:mm:ss'} for both `0.5` and `12:00:00`.
       //
-      //   day-fraction reading <= 1 hour  -> a real clock time, use it
-      //   day-fraction reading  > 1 hour  -> absurd for one segment, so the
-      //                                      user meant literal seconds
+      // Resolved by reading `w` - the string Excel actually displays, i.e. what
+      // the user typed and sees - and parsing it with parseTimeToSeconds, the
+      // very function the CSV path uses. That gives CSV/Excel parity by
+      // construction rather than by a second implementation agreeing.
       //
-      // 0.5 previously became 43,200s (12 hours) - wrong by 86,400x, and it
-      // "succeeded", so nothing surfaced it. Under this rule 0.5 reads as
-      // 0.5 seconds, while a genuine 0:01:26 (v=0.001) still reads as 86.4s.
+      // Reading the raw serial instead was wrong twice over:
       //
-      // EDGE CASE, deliberate: raw values at or below 0.0416667 are read as
-      // clock times, so a literal 0.001 or 0.01 seconds cannot be expressed in
-      // a Time-formatted column - it would be indistinguishable from 0:01:26
-      // and 0:14:24. Sub-0.04-second segments are not a real use case, and
-      // every format still works from a Text-formatted column or a CSV. This
-      // is documented for users in TIME_FORMAT_HELP.
-      const asSeconds = serialToSeconds(cell.v)
-      if (cell.v <= MAX_SERIAL_FRACTION && asSeconds <= MAX_SEGMENT_SECONDS) {
-        return secondsToHms(asSeconds)
+      //   * Excel stores a typed "0:03" under an h:mm format as 3 MINUTES,
+      //     so the serial says 180s while the CSV parser reads the identical
+      //     text "0:03" as 3 seconds. Every segment came out 60x too long.
+      //
+      //   * The plausibility test ran per cell, so a column climbing past
+      //     1:00 flipped interpretation mid-way: rows below the boundary
+      //     became clock times and rows above became raw decimals, producing
+      //     "End time must be greater than start time" partway down a file
+      //     that was perfectly consistent. Display strings are monotonic in
+      //     the user's reading, so the whole column now parses one way.
+      //
+      // The raw number is still the fallback: a literal 0.5 in a time-formatted
+      // cell displays as "12:00:00", which reads as 43,200s - implausible for
+      // one segment - so the literal 0.5 seconds is used instead. That is the
+      // 86,400x bug this guard exists for.
+      const shown = typeof cell.w === 'string' ? cell.w.trim() : ''
+      if (shown) {
+        const secs = parseTimeToSeconds(shown, { allowRelative: false })
+        if (secs !== null && secs <= MAX_SEGMENT_SECONDS) return shown
+      } else {
+        // No display string. SheetJS renders `w` from the number format when
+        // cellNF is on, so this is rare, but an exotic format it cannot render
+        // would otherwise drop straight to the raw serial and read a genuine
+        // clock time as a tiny decimal. Fall back to interpreting the serial.
+        const asSeconds = Math.round((cell.v - Math.floor(cell.v)) * 86400 * 1000) / 1000
+        if (asSeconds > 0 && asSeconds <= MAX_SEGMENT_SECONDS) {
+          const h = Math.floor(asSeconds / 3600)
+          const m = Math.floor((asSeconds % 3600) / 60)
+          const sec = asSeconds - h * 3600 - m * 60
+          return `${h}:${String(m).padStart(2, '0')}:${(Math.round(sec * 100) / 100).toFixed(2).padStart(5, '0')}`
+        }
       }
       return String(cell.v)
     }
@@ -163,7 +174,17 @@ export async function readTimelineFileAsCsvText(file: File): Promise<TimelineFil
   const isXlsx = file.name.toLowerCase().endsWith('.xlsx')
 
   if (!isXlsx) {
-    return { csvText: await file.text(), warnings: [] }
+    // Excel's "CSV UTF-8" export prepends a byte-order mark. file.text()
+    // preserves it, so the first header arrives as "\uFEFFimage" rather than
+    // "image", the required-column check fails to match it, and the upload is
+    // rejected with "CSV missing required columns" - which is why some CSVs
+    // worked and others did not, purely by how they were saved.
+    //
+    // Note this app writes BOMs itself: Script Timestamp's CSV export adds one
+    // so Excel opens non-ASCII text correctly. Without stripping here, the app
+    // could not read back a file it had just written.
+    const raw = await file.text()
+    return { csvText: raw.replace(/^\uFEFF/, ''), warnings: [] }
   }
 
   const buffer = await file.arrayBuffer()
