@@ -79,15 +79,23 @@ CASES = [
     ("=A1+5 computed",        {"t": "n", "v": 20, "f": "A1+5"}, "20", ABS_START, 0.0, 20.0),
     # --- TIME-FORMATTED numeric cells, resolved by the one-hour rule -----------
     # Day-fraction reading would be absurd (>1h), so these are literal seconds.
-    ("time-fmt 0.5",          {"t": "n", "v": 0.5,  "z": "h:mm:ss"}, "0.5", ABS_START, 0.0, 0.5),
-    ("time-fmt 0.1",          {"t": "n", "v": 0.1,  "z": "h:mm:ss"}, "0.1", ABS_START, 0.0, 0.1),
-    ("time-fmt 5",            {"t": "n", "v": 5,    "z": "h:mm:ss"}, "5", ABS_START, 0.0, 5.0),
-    ("time-fmt 90",           {"t": "n", "v": 90,   "z": "h:mm:ss"}, "90", ABS_START, 0.0, 90.0),
-    ("time-fmt 20.5",         {"t": "n", "v": 20.5, "z": "h:mm:ss"}, "20.5", ABS_START, 0.0, 20.5),
-    # Day-fraction reading is plausible (<=1h), so these stay clock times.
-    ("genuine 0:01:20",       {"t": "n", "v": 80/86400.0,   "z": "h:mm:ss"}, "00:01:20", ABS_START, 0.0, 80.0),
-    ("genuine 0:00:05",       {"t": "n", "v": 5/86400.0,    "z": "h:mm:ss"}, "00:05", ABS_START, 0.0, 5.0),
-    ("genuine 1:00:00",       {"t": "n", "v": 3600/86400.0, "z": "h:mm:ss"}, "1:00:00", ABS_START, 0.0, 3600.0),
+    # Every fixture carries `w`, because real Excel always does - the reader
+    # trusts the displayed string over the raw serial.
+    ("time-fmt 0.5",          {"t": "n", "v": 0.5,  "z": "h:mm:ss", "w": "12:00:00"}, "0.5", ABS_START, 0.0, 0.5),
+    ("time-fmt 0.1",          {"t": "n", "v": 0.1,  "z": "h:mm:ss", "w": "2:24:00"}, "0.1", ABS_START, 0.0, 0.1),
+    ("time-fmt 5",            {"t": "n", "v": 5,    "z": "h:mm:ss", "w": "120:00:00"}, "5", ABS_START, 0.0, 5.0),
+    ("time-fmt 90",           {"t": "n", "v": 90,   "z": "h:mm:ss", "w": "2160:00:00"}, "90", ABS_START, 0.0, 90.0),
+    ("time-fmt 20.5",         {"t": "n", "v": 20.5, "z": "h:mm:ss", "w": "492:00:00"}, "20.5", ABS_START, 0.0, 20.5),
+    # Display string is a plausible segment, so it is trusted.
+    ("genuine 0:01:20",       {"t": "n", "v": 80/86400.0,   "z": "h:mm:ss", "w": "0:01:20"}, "00:01:20", ABS_START, 0.0, 80.0),
+    ("genuine 0:00:05",       {"t": "n", "v": 5/86400.0,    "z": "h:mm:ss", "w": "0:00:05"}, "00:05", ABS_START, 0.0, 5.0),
+    ("genuine 1:00:00",       {"t": "n", "v": 3600/86400.0, "z": "h:mm:ss", "w": "1:00:00"}, "1:00:00", ABS_START, 0.0, 3600.0),
+    # The real-file case: Excel reads a typed "0:03" under h:mm as 3 MINUTES,
+    # so the serial says 180s while CSV reads the same text as 3 seconds.
+    # The displayed string is authoritative.
+    ("h:mm 0:03 = 3 seconds", {"t": "n", "v": 3/1440.0,  "z": "h:mm", "w": "0:03"}, "0:03", ABS_START, 0.0, 3.0),
+    ("h:mm 1:03 = 63 seconds",{"t": "n", "v": 63/1440.0, "z": "h:mm", "w": "1:03"}, "1:03", ABS_START, 0.0, 63.0),
+    ("h:mm fractional 10:37.5",{"t": "n","v": 637.5/86400.0,"z": "h:mm","w": "10:37.5"}, "10:37.5", ABS_START, 0.0, 637.5),
 ]
 
 # A single Node driver that bundles the TypeScript reader and runs cellToText
@@ -108,15 +116,14 @@ const fs = require('fs');
 const esbuild = require('esbuild');
 
 const modPath = process.argv[2];
-const cases = JSON.parse(process.argv[3]);
 
 const outfile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tlparity-')), 'bundle.cjs');
 const entry = path.join(path.dirname(outfile), 'entry.ts');
 // Single line on purpose: no escape sequences to survive being written
 // through Python, and none are needed.
 fs.writeFileSync(entry, [
-  'import { cellToText } from ' + JSON.stringify(modPath) + ';',
-  'module.exports = { cellToText };',
+  'import { cellToText, sheetToCsvText } from ' + JSON.stringify(modPath) + ';',
+  'module.exports = { cellToText, sheetToCsvText };',
 ].join(String.fromCharCode(10)));
 
 esbuild.buildSync({
@@ -129,8 +136,22 @@ esbuild.buildSync({
   outfile,
 });
 
-const { cellToText } = require(outfile);
-console.log(JSON.stringify(cases.map(c => cellToText(c))));
+const mod = require(outfile);
+const payload = JSON.parse(process.argv[3]);
+if (payload.sheet) {
+  // Whole-sheet mode: build a worksheet from cell objects and run the real
+  // sheetToCsvText, so multi-row behaviour is exercised end to end.
+  const sheet = {};
+  let maxR = 0;
+  for (const [addr, cell] of Object.entries(payload.sheet)) {
+    sheet[addr] = cell;
+    maxR = Math.max(maxR, parseInt(addr.replace(/[A-Z]/g, ''), 10));
+  }
+  sheet['!ref'] = 'A1:C' + maxR;
+  console.log(JSON.stringify({ csv: mod.sheetToCsvText(sheet) }));
+} else {
+  console.log(JSON.stringify(payload.map(c => mod.cellToText(c))));
+}
 """
 
 
@@ -148,8 +169,8 @@ def prerequisites_missing() -> str:
     return ""
 
 
-def xlsx_cell_texts(cells):
-    """Run the real TypeScript cellToText over each cell object."""
+def run_driver(payload):
+    """Run the real TypeScript reader over a payload (cell list or a sheet)."""
     node = shutil.which("node")
     mod = (FRONTEND / "src" / "utils" / "timelineFileReader.ts").as_posix()
 
@@ -173,7 +194,7 @@ def xlsx_cell_texts(cells):
         driver = Path(td) / "parity_driver.cjs"
         driver.write_text(RUNNER, encoding="utf-8")
         run = subprocess.run(
-            prefix + [node, str(driver), mod, json.dumps(cells)],
+            prefix + [node, str(driver), mod, json.dumps(payload)],
             cwd=str(FRONTEND), capture_output=True, text=True,
         )
         if run.returncode != 0:
@@ -203,7 +224,7 @@ def main():
         print("=" * 72)
         return 0
 
-    texts = xlsx_cell_texts([c[1] for c in CASES])
+    texts = run_driver([c[1] for c in CASES])
     failures = []
 
     print("PARITY - rows parsed from XLSX must match rows parsed from CSV")
@@ -254,6 +275,46 @@ def main():
     else:
         print("GUARD OK: a '+5' relative end from Excel stays relative "
               "(10.0->15.0), not an absolute 5s.")
+
+    # ---- Guard: a column whose values straddle the one-hour boundary --------
+    # The real bug that shipped. Every case above is a single row, so a column
+    # that changes interpretation partway down was never exercised. This sheet
+    # climbs 0:56 -> 1:08 in h:mm, exactly like the file that failed.
+    print()
+    sheet = {"A1": {"t": "s", "v": "image"},
+             "B1": {"t": "s", "v": "start"},
+             "C1": {"t": "s", "v": "end"}}
+    mins = [56, 59, 63, 66, 68]
+    for i, (a, b) in enumerate(zip(mins, mins[1:]), start=2):
+        sheet[f"A{i}"] = {"t": "s", "v": f"{i}.jpg"}
+        sheet[f"B{i}"] = {"t": "n", "v": a / 1440.0, "z": "h:mm", "w": f"{a // 60}:{a % 60:02d}"}
+        sheet[f"C{i}"] = {"t": "n", "v": b / 1440.0, "z": "h:mm", "w": f"{b // 60}:{b % 60:02d}"}
+    res = run_driver({"sheet": sheet})
+    ok_b, rows_b, _d, errs_b, _w, _n = parse_timeline_csv(res["csv"], "image")
+    if not ok_b or len(rows_b) != 4 or abs(rows_b[0]["start"] - 56.0) > 1e-6 \
+            or abs(rows_b[-1]["end"] - 68.0) > 1e-6:
+        print("REGRESSION: a column crossing the one-hour serial boundary no longer "
+              f"parses consistently. errors={errs_b[:2]}")
+        failures.append("boundary-crossing column")
+    else:
+        print("GUARD OK: a column crossing 1:00 stays consistent "
+              f"({rows_b[0]['start']}s -> {rows_b[-1]['end']}s across {len(rows_b)} rows).")
+
+    # ---- Guard: CSV saved with a UTF-8 BOM ----------------------------------
+    # Excel's "CSV UTF-8" export prepends one. Left in place it corrupts the
+    # first header and the upload is rejected for "missing required columns".
+    bom_csv = "\ufeff" + "image,start,end\n1.jpg,0,5\n2.jpg,5,10\n"
+    stripped = bom_csv.replace("\ufeff", "", 1)
+    ok_raw, _r, _d, _e, _w, _n = parse_timeline_csv(bom_csv, "image")
+    ok_str, rows_s, _d, errs_s, _w, _n = parse_timeline_csv(stripped, "image")
+    if ok_raw:
+        print("NOTE: the parser now tolerates a BOM itself; the reader strip is redundant.")
+    if not ok_str or len(rows_s) != 2:
+        print(f"REGRESSION: BOM-stripped CSV still fails. errors={errs_s[:2]}")
+        failures.append("BOM CSV")
+    else:
+        print("GUARD OK: a BOM-prefixed CSV parses once the reader strips it "
+              f"({len(rows_s)} rows).")
 
     if failures:
         print(f"\nFAILED: {len(failures)} case(s) - {', '.join(failures)}")
