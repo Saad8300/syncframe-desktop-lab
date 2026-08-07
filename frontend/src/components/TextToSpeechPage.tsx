@@ -74,7 +74,10 @@ export default function TextToSpeechPage() {
   const [text, setText] = useState('')
   const [voiceId, setVoiceId] = useState('')
   const [speed, setSpeed] = useState(1.0)
-  const [outputFormat, setOutputFormat] = useState<OutputFormat>('wav')
+  // MP3 by default: far smaller files for the same spoken content, and the
+  // format most users want to publish. WAV stays one click away for anyone
+  // who needs uncompressed audio.
+  const [outputFormat, setOutputFormat] = useState<OutputFormat>('mp3')
   const [outputName, setOutputName] = useState(() => loadSettings().defaultAudioFilename || 'speech')
 
   // Filters
